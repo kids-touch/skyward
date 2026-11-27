@@ -36,7 +36,7 @@ writes = [{ path = "/sys/class/touch/touch_dev/enable_touch_raw", value = "0" }]
 # put the running kernel's own module there before WLAN is brought up.
 [[service]]
 path = "/system/bin/sh"
-args = ["-c", "V=$(ls -d /system_dlkm/lib/modules/*/kernel/net/rfkill 2>/dev/null | head -1) && mount --bind \"$V/rfkill.ko\" /system_dlkm/flatten/lib/modules/rfkill.ko || true"]
+args = ["-c", "V=$(ls -d /system_dlkm/lib/modules/*/kernel/net/rfkill 2>/dev/null | head -1); [ -f \"$V/rfkill.ko\" ] || exit 0; mkdir -p /tmp/skyward/modules && cp \"$V/rfkill.ko\" /tmp/skyward/modules/rfkill.ko && mount --bind /tmp/skyward/modules/rfkill.ko /system_dlkm/flatten/lib/modules/rfkill.ko || true"]
 oneshot = true
 user = "root"
 groups = ["root"]
