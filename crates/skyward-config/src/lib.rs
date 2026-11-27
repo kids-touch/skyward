@@ -254,12 +254,23 @@ pub struct Haptics {
     /// tenths of a hertz whatever its label.
     pub resonance: String,
     pub strength: Strength,
+    /// How many whole swings drive a made click. A shorter drive reduces
+    /// the motor's peak travel and leaves more of the waveform for braking.
+    #[serde(default = "default_drive_swings")]
+    pub drive_swings: f32,
+    /// Cap the click amplitude to keep the motor from bottoming out.
+    #[serde(default)]
+    pub max_amplitude: Option<f32>,
     /// Whether the strength goes into the samples made, each made that
     /// share of itself and played at the driver's full magnitude, on
     /// phones whose driver plays samples at only two strengths whatever
     /// magnitude between none and the full one it is given.
     #[serde(default)]
     pub scale_samples: bool,
+}
+
+fn default_drive_swings() -> f32 {
+    2.0
 }
 
 /// How strongly the click plays, each as a share of the most its waveform
