@@ -370,6 +370,7 @@ mod sys {
             fs::OpenOptions::new()
                 .write(true)
                 .create(true)
+                .truncate(false)
                 .open(path)
                 .with_context(|| format!("create file {}", path.display()))?;
         }
