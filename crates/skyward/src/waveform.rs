@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn samples_made_a_share_of_themselves_swing_the_same_way_less_far() {
-        let click = made(172.4);
+        let click = made(172.4, 2.0);
         assert_eq!(scaled(&click, 1.0), click, "the whole of them is as they were made");
         assert!(scaled(&click, 0.0).iter().all(|&s| s == 0), "none of them is still");
         let s = Strength { lightest: 0.15, strongest: 1.0 };
