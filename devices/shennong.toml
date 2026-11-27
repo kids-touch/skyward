@@ -102,4 +102,6 @@ recovery = "2a07b87f0a09ec8e75155aa9d36df354de09d77332cf56caf97659878e91e368"
 # is yet tried on this phone's motor.
 [haptics]
 resonance = "/sys/class/qcom-haptics/lra_frequency_hz"
-strength = { lightest = 0.25, strongest = 0.75 }
+drive_swings = 1.2
+max_amplitude = 0.45
+strength = { lightest = 0.2, strongest = 0.6 }
