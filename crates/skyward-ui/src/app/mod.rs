@@ -52,6 +52,7 @@ mod nav;
 mod power;
 mod prefs;
 mod reboot;
+mod rescue;
 mod relabel;
 mod scroll;
 mod skyward;
@@ -77,6 +78,7 @@ pub use modules::*;
 pub use mount::*;
 pub use prefs::*;
 pub use reboot::*;
+pub use rescue::*;
 pub use relabel::*;
 pub use skyward::*;
 pub use state::*;
@@ -125,6 +127,8 @@ pub enum Screen {
     RestoreBackup,
     /// Backing up or restoring under way, and how it ended.
     BackupJob,
+    /// Finding and copying files from the data partition.
+    Rescue,
     /// Tools for the experienced: files, a terminal, the logs.
     Advanced,
     Files,
@@ -347,6 +351,10 @@ pub enum Action {
     RestorePart(usize),
     /// Stop backing up, or checking a backup before it is restored.
     StopBackup,
+    RescueKind(usize),
+    StartRescueScan,
+    StartRescueExport,
+    StopRescue,
     /// Tick or untick a log to export: the recovery's, the kernel's.
     LogPart(usize),
     /// Save the logs to the temporary folder, or to internal storage.
@@ -745,6 +753,12 @@ pub enum Effect {
     DeleteBackup { place: Place, name: String },
     /// Stop the backup under way, or the check before a restore.
     StopBackup,
+    /// Scan for pictures, videos, documents and WeChat data.
+    RescueScan([bool; 4]),
+    /// Export the files found by the last rescue scan.
+    RescueExport,
+    /// Stop scanning, copying or decrypting rescued data.
+    StopRescue,
     /// Read where the update stands, telling it with [`App::set_update`].
     ReadUpdate,
     /// Turn the WLAN on or off; how it stands comes back with

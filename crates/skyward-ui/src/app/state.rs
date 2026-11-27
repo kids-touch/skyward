@@ -145,6 +145,8 @@ pub struct State {
     pub restore: Option<(BackupEntry, [bool; 5])>,
     /// Backing up or restoring under way, or how it last ended.
     pub backup_job: Option<BackupJob>,
+    /// The rescue scan, selected kinds, progress and last result.
+    pub rescue: RescueState,
     /// Which logs to export: the recovery's, the kernel's.
     pub logs: [bool; 2],
     /// Where the logs go: 0 for the temporary folder, 1 for internal
@@ -343,6 +345,7 @@ impl Default for State {
             backups: Vec::new(),
             restore: None,
             backup_job: None,
+            rescue: RescueState::default(),
             logs: [true, true],
             logs_to: 0,
             boot_slots: None,

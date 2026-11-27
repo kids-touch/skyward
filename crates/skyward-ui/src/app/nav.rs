@@ -268,6 +268,12 @@ impl App {
                 }
                 self.state.backup_job = None;
             }
+            Screen::Rescue => {
+                if self.state.rescue.running {
+                    self.say(l.pick(WAIT_OR_STOP), now);
+                    return fx;
+                }
+            }
             _ => {}
         }
         if self.screen() == Screen::Installing {

@@ -462,6 +462,35 @@ impl App {
                 parts[k].toggle();
                 self.refresh();
             }
+            Action::RescueKind(k) => {
+                if let Some(on) = self.state.rescue.kinds.get_mut(k) { *on = !*on; }
+                self.refresh();
+            }
+            Action::StartRescueScan => {
+                if !self.state.data.storage_open() {
+                    self.say(l.pick(DECRYPT_FIRST), now);
+                } else if !self.state.rescue.kinds.contains(&true) {
+                    self.say(if l == Lang::Hans { "请至少选择一种数据类型" } else { "Choose at least one kind of data" }, now);
+                } else {
+                    return vec![Effect::RescueScan(self.state.rescue.kinds)];
+                }
+            }
+            Action::StartRescueExport => {
+                if !self.state.data.storage_open() {
+                    self.say(l.pick(DECRYPT_FIRST), now);
+                } else if self.state.rescue.found == 0 {
+                    self.say(if l == Lang::Hans { "请先扫描数据" } else { "Scan for data first" }, now);
+                } else {
+                    return vec![Effect::RescueExport];
+                }
+            }
+            Action::StopRescue => {
+                if self.state.rescue.running && !self.state.rescue.stopping {
+                    self.state.rescue.stopping = true;
+                    self.refresh();
+                    return vec![Effect::StopRescue];
+                }
+            }
             Action::StopBackup => {
                 let job = self.state.backup_job.as_mut().expect("only work under way is stopped");
                 if job.outcome.is_none() && !job.stopping {
