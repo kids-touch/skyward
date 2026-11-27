@@ -506,6 +506,13 @@ pub fn settings(cx: &Ctx) -> Frame {
     y = widgets::footnote(&mut c, t, f, usb.bottom, l.pick(texts::settings::FILE_TRANSFER_NOTE));
     let note = l.pick(texts::local::WIRELESS_NOTE);
     y = widgets::footnote(&mut c, t, f, y, note);
+    y = widgets::section(&mut c, t, f, y, "密码与自动连接");
+    let remembered = widgets::list(&mut c, t, f, y, &[
+        Row::new("记住 DATA 解密/锁屏密码").icon(ORANGE, Icon::Lock).trail(Trail::Switch(s.remember_data)),
+        Row::new("进入 Recovery 自动开启 Wi-Fi 并连接已保存网络").icon(BLUE, Icon::Wlan).trail(Trail::Switch(s.auto_wlan)),
+    ]);
+    out.extend(hits(&remembered.rows, &[Action::Toggle(Switch::RememberData), Action::Toggle(Switch::AutoWlan)]));
+    y = widgets::footnote(&mut c, t, f, remembered.bottom, "关闭对应开关会清除已保存的密码和网络记录；凭据以明文保存在 /metadata/skyward/settings.json，并限制文件权限。");
     y = widgets::section(&mut c, t, f, y, l.pick(texts::settings::DEBUGGING));
     let debug = widgets::list(
         &mut c,

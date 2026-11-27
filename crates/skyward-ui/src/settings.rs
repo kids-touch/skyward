@@ -75,7 +75,23 @@ pub struct Settings {
     pub install: Install,
     pub backup: Backup,
     pub logs: Logs,
+    /// Remember screen-lock credentials for automatic DATA unlock.
+    pub remember_data: bool,
+    pub saved_data: Vec<KeptData>,
+    /// Automatically reconnect to previously joined WLANs.
+    pub auto_wlan: bool,
+    pub saved_wlan: Vec<KeptWlan>,
 }
+
+/// A remembered DATA screen-lock credential. Stored in /metadata settings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct KeptData { pub user: u32, pub code: String }
+
+/// A remembered WLAN credential; SSID is hex so arbitrary bytes survive JSON.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct KeptWlan { pub ssid: String, pub name: String, pub security: String, pub password: String }
 
 /// The install page's options.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -171,6 +187,10 @@ impl Settings {
                 verify: state.verify,
             },
             logs: Logs { kinds: names(&state.logs, &LOGS), to: LOG_PLACES[state.logs_to].to_string() },
+            remember_data: state.remember_data,
+            saved_data: state.saved_data.iter().map(|d| KeptData { user: d.user, code: d.code.0.clone() }).collect(),
+            auto_wlan: state.auto_wlan,
+            saved_wlan: state.saved_wlan.iter().map(|w| KeptWlan { ssid: hex(&w.ssid), name: w.name.clone(), security: security_name(w.security).into(), password: w.password.0.clone() }).collect(),
         }
     }
 
@@ -244,11 +264,23 @@ impl Settings {
         state.compress = self.backup.compress;
         state.verify = self.backup.verify;
         state.logs = picked(&self.logs.kinds, &LOGS);
+        state.remember_data = self.remember_data;
+        state.saved_data = if self.remember_data { self.saved_data.iter().map(|d| crate::app::SavedData { user: d.user, code: crate::app::Secret(d.code.clone()) }).collect() } else { Vec::new() };
+        state.auto_wlan = self.auto_wlan;
+        state.saved_wlan = if self.auto_wlan { self.saved_wlan.iter().filter_map(|w| Some(crate::app::SavedWlan { ssid: unhex(&w.ssid)?, name: w.name.clone(), security: security_of(&w.security)?, password: crate::app::Secret(w.password.clone()) })).take(16).collect() } else { Vec::new() };
         if let Some(at) = LOG_PLACES.iter().position(|place| *place == self.logs.to) {
             state.logs_to = at;
         }
     }
 }
+
+fn hex(bytes: &[u8]) -> String { bytes.iter().map(|b| format!("{b:02x}")).collect() }
+fn unhex(s: &str) -> Option<Vec<u8>> {
+    if !s.is_ascii() || s.len() % 2 != 0 { return None; }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i+2], 16).ok()).collect()
+}
+fn security_name(s: skyward_net::supplicant::Security) -> &'static str { use skyward_net::supplicant::Security::*; match s { Open=>"open", Owe=>"owe", Wep=>"wep", Psk=>"psk", Sae=>"sae", PskSae=>"psk_sae", Enterprise=>"enterprise" } }
+fn security_of(s: &str) -> Option<skyward_net::supplicant::Security> { use skyward_net::supplicant::Security::*; Some(match s { "open"=>Open, "owe"=>Owe, "wep"=>Wep, "psk"=>Psk, "sae"=>Sae, "psk_sae"=>PskSae, "enterprise"=>Enterprise, _=>return None }) }
 
 /// The names of those of `all` that are `ticked`.
 fn names(ticked: &[bool], all: &[&str]) -> Vec<String> {
