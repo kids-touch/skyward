@@ -126,6 +126,7 @@ impl Worker {
 impl Drop for Worker {
     /// The screen lets the worker go once its work has ended.
     fn drop(&mut self) {
+        self.cancel.store(true, Ordering::Relaxed);
         if let Some(thread) = self.thread.take() {
             thread.join().expect("the rescue worker does not panic");
         }

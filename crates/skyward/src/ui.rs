@@ -1,5 +1,6 @@
 use crate::backup;
 use crate::decrypt::{self, Decryptor};
+use crate::rescue;
 use crate::filework;
 use crate::haptics::Haptics;
 use crate::input::{ Event, Inputs, monotonic_ms};
@@ -1341,6 +1342,9 @@ struct Pages<'a> {
     relabeler: Option<filework::Worker>,
     /// Backing up or restoring under way.
     backuper: Option<backup::Worker>,
+    /// Finding and copying files for the data-rescue page.
+    rescue_worker: Option<rescue::Worker>,
+    rescue_found: Vec<rescue::Found>,
     /// An update's merge followed: one the recovery found under way, which
     /// the kernel took up again as the snapshots were mapped, or one started
     /// on the update page.
@@ -1606,6 +1610,8 @@ impl<'a> Pages<'a> {
             worker: None,
             relabeler: None,
             backuper: None,
+            rescue_worker: None,
+            rescue_found: Vec::new(),
             merger: None,
             systems_worker,
             switch_asked: false,
@@ -1816,6 +1822,7 @@ impl<'a> Pages<'a> {
         self.relabel_told(now);
         self.parts_told(now)?;
         self.backup_told(now);
+        self.rescue_told(now);
         self.merge_told(now)?;
         self.systems_told(now)?;
         self.wlan_told()?;
@@ -2168,6 +2175,7 @@ impl<'a> Pages<'a> {
         if let Some(b) = &self.backuper {
             fds.push(b.fd());
         }
+        if let Some(r) = &self.rescue_worker { fds.push(r.fd()); }
         if let Some(m) = &self.merger {
             fds.push(m.fd());
         }
@@ -2223,6 +2231,7 @@ impl<'a> Pages<'a> {
             || self.worker.is_some()
             || self.relabeler.is_some()
             || self.backuper.is_some()
+            || self.rescue_worker.is_some()
             || self.merger.is_some()
             || self.decryptor.is_some()
             || self.part_worker.is_some()
@@ -2658,6 +2667,49 @@ impl Pages<'_> {
         Ok(())
     }
 
+    /// What the data-rescue worker told: scan results, copy progress and the
+    /// optional WeChat database/picture decryption result.
+    fn rescue_told(&mut self, _now: u64) {
+        let events = self.rescue_worker.as_ref().map(rescue::Worker::events).unwrap_or_default();
+        let mut ended = false;
+        for event in events {
+            match event {
+                rescue::Event::Progress(p) => self.app.rescue_progress(p.seen, p.found, p.bytes, p.at),
+                rescue::Event::Found(found) => {
+                    self.rescue_found = found;
+                    self.app.rescue_found(self.rescue_found.len() as u64);
+                }
+                rescue::Event::Unlocking(stage, count) => {
+                    let what = match stage {
+                        skyward_wechat::Stage::Databases => format!("WeChat databases: {count}"),
+                        skyward_wechat::Stage::Pictures => format!("WeChat pictures: {count}"),
+                    };
+                    self.app.rescue_progress(count, self.rescue_found.len() as u64, 0, what);
+                }
+                rescue::Event::Saved(summary, opened) => {
+                    let mut result = format!("Saved {} files, {} MB; {} failed. Folder: {}", summary.files, summary.bytes / 1_048_576, summary.failed, summary.into.display());
+                    if let Some(given) = opened {
+                        result.push_str(&format!(". WeChat: {} databases, {} pictures restored", given.databases.len(), given.pictures));
+                        if given.passphrase.is_none() && given.databases.is_empty() {
+                            result.push_str("; database key was not found, original WeChat folder was still copied");
+                        }
+                    }
+                    self.app.rescue_saved(result);
+                }
+                rescue::Event::Ended(end) => {
+                    let result = match end {
+                        rescue::End::Done => "Task complete".to_string(),
+                        rescue::End::Stopped => "Task stopped".to_string(),
+                        rescue::End::Failed(why) => format!("Task failed: {why}"),
+                    };
+                    self.app.rescue_ended(result, _now);
+                    ended = true;
+                }
+            }
+        }
+        if ended { self.rescue_worker = None; }
+    }
+
     /// What backing up or restoring told.
     fn backup_told(&mut self, now: u64) {
         let told = self.backuper.as_ref().map(backup::Worker::events).unwrap_or_default();
@@ -2812,6 +2864,7 @@ impl Pages<'_> {
             || self.merger.is_some()
             || self.eraser.is_some()
             || self.backuper.is_some()
+            || self.rescue_worker.is_some()
             || self.part_worker.is_some()
             || self.systems_worker.as_ref().is_some_and(systems::Worker::busy);
         if !metadata_busy
@@ -3386,6 +3439,24 @@ impl Pages<'_> {
                 return Ok(self.app.backup_deleted(deleted, now));
             }
             Effect::StopBackup => self.backuper.as_ref().context("there is no backup or restore to stop")?.stop(),
+            Effect::RescueScan(kinds) => {
+                ensure!(self.rescue_worker.is_none(), "a rescue task is already under way");
+                ensure!(self.app.state.data.storage_open(), "open the data partition before scanning");
+                let selected = [skyward_rescue::Kind::Image, skyward_rescue::Kind::Video, skyward_rescue::Kind::Document, skyward_rescue::Kind::Wechat];
+                let kinds = selected.into_iter().zip(kinds).filter_map(|(kind, on)| on.then_some(kind)).collect();
+                self.rescue_found.clear();
+                self.rescue_worker = Some(rescue::Worker::start(rescue::Task::Scan(kinds))?);
+                self.app.rescue_started(false);
+            }
+            Effect::RescueExport => {
+                ensure!(self.rescue_worker.is_none(), "a rescue task is already under way");
+                ensure!(self.app.state.data.storage_open(), "open the data partition before exporting");
+                ensure!(!self.rescue_found.is_empty(), "scan for data before exporting");
+                let into = rescue::target()?;
+                self.rescue_worker = Some(rescue::Worker::start(rescue::Task::Export { found: self.rescue_found.clone(), into })?);
+                self.app.rescue_started(true);
+            }
+            Effect::StopRescue => self.rescue_worker.as_ref().context("there is no rescue task to stop")?.stop(),
             Effect::ReadUpdate => {
                 let slot = self.info.slot.context("only an A/B phone has an update to merge")?;
                 // A merge followed tells where it stands itself.
