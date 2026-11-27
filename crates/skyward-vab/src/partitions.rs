@@ -543,7 +543,6 @@ pub fn unmount_partitions(slot: Slot) -> Result<()> {
 #[cfg(test)]
 mod release_tests {
     use super::is_busy;
-    use anyhow::Context;
 
     #[test]
     fn recognizes_busy_unmount_errors_through_anyhow_context() {
