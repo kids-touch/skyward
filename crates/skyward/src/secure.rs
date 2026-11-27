@@ -174,8 +174,20 @@ fn bundle(name: &str) -> Result<Option<PathBuf>> {
     let Some(file) = BUNDLE_DIRS.iter().map(|d| Path::new(d).join(format!("{name}.apex"))).find(|p| p.is_file()) else {
         return Ok(None);
     };
-    let (offset, length) = image(&file)?;
-    let device = skyward_block::loopdev::attach(&file, offset, length)?;
+    // A loop device keeps its backing file open for as long as the APEX is
+    // mounted. If that file lives on /mnt/system_ext, the kernel will refuse
+    // to unmount system_ext when an install needs to move off the installed
+    // system. Stage the APEX on recovery's temporary filesystem first so
+    // the loop device no longer pins the installed partition.
+    let staged_dir = Path::new("/tmp/skyward/apex");
+    fs::create_dir_all(staged_dir).with_context(|| format!("make {}", staged_dir.display()))?;
+    let staged = staged_dir.join(format!("{name}.apex"));
+    if !staged.exists() {
+        fs::copy(&file, &staged)
+            .with_context(|| format!("stage {} at {}", file.display(), staged.display()))?;
+    }
+    let (offset, length) = image(&staged)?;
+    let device = skyward_block::loopdev::attach(&staged, offset, length)?;
     fs::create_dir_all(&at).with_context(|| format!("make {}", at.display()))?;
     skyward_block::mount::mount_ro(&device, &at)?;
     Ok(Some(at))
