@@ -348,12 +348,12 @@ fn picture_head(head: &[u8]) -> bool {
     if head.len() >= 12 && &head[..4] == b"RIFF" && &head[8..12] == b"WEBP" {
         return true;
     }
-    if head.len() >= 12 && &head[4..8] == b"ftyp" {
-        if let Ok(brand) = <&[u8; 4]>::try_from(&head[8..12]) {
-            if PICTURE_BRANDS.contains(&brand) {
-                return true;
-            }
-        }
+    if head.len() >= 12
+        && &head[4..8] == b"ftyp"
+        && let Ok(brand) = <&[u8; 4]>::try_from(&head[8..12])
+        && PICTURE_BRANDS.contains(&brand)
+    {
+        return true;
     }
     // TIFF, which the cameras' raw files are under the surface, and the
     // two that keep a mark of their own before their TIFF half.
@@ -397,17 +397,17 @@ fn film_head(head: &[u8]) -> bool {
     // the one a file is named by, and a brand of its own may still list a
     // known one among those it can be read by.
     if head.len() >= 12 && &head[4..8] == b"ftyp" {
-        if let Ok(brand) = <&[u8; 4]>::try_from(&head[8..12]) {
-            if FILM_BRANDS.contains(&brand) {
-                return true;
-            }
+        if let Ok(brand) = <&[u8; 4]>::try_from(&head[8..12])
+            && FILM_BRANDS.contains(&brand)
+        {
+            return true;
         }
         let rest = head.get(16..).unwrap_or_default();
         for at in (0..rest.len().saturating_sub(3)).step_by(4) {
-            if let Ok(brand) = <&[u8; 4]>::try_from(&rest[at..at + 4]) {
-                if FILM_BRANDS.contains(&brand) {
-                    return true;
-                }
+            if let Ok(brand) = <&[u8; 4]>::try_from(&rest[at..at + 4])
+                && FILM_BRANDS.contains(&brand)
+            {
+                return true;
             }
         }
     }
@@ -510,15 +510,19 @@ fn inner(path: &Path) -> PathBuf {
         .collect();
     let user = |at: usize| parts.get(at).filter(|name| name.parse::<u32>().is_ok()).cloned();
     // `/data/media/<user>/…` and `/data/user/<user>/<app>/…`.
-    if parts.len() >= 3 && parts[0] == "data" && parts[1] == "media" {
-        if let Some(user) = user(2) {
-            return under(format!("user{user}"), &parts[3..]);
-        }
+    if parts.len() >= 3
+        && parts[0] == "data"
+        && parts[1] == "media"
+        && let Some(user) = user(2)
+    {
+        return under(format!("user{user}"), &parts[3..]);
     }
-    if parts.len() >= 4 && parts[0] == "data" && parts[1] == "user" {
-        if let Some(user) = user(2) {
-            return under(format!("user{user}"), &parts[3..]);
-        }
+    if parts.len() >= 4
+        && parts[0] == "data"
+        && parts[1] == "user"
+        && let Some(user) = user(2)
+    {
+        return under(format!("user{user}"), &parts[3..]);
     }
     if parts.len() >= 3 && parts[0] == "data" && parts[1] == "data" {
         return under("user0".to_string(), &parts[2..]);
