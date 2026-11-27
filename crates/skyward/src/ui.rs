@@ -1357,6 +1357,8 @@ struct Pages<'a> {
     /// The WLAN, on a phone whose driver the recovery brings up.
     wlan: Option<wlan::Worker>,
     scanned_at: Instant,
+    pending_wlan: Option<(Vec<u8>, String, skyward_net::supplicant::Security, String)>,
+    pending_unlock: Option<(u32, String)>,
     /// Asking the update server, and downloading the full package.
     checker: Option<updates::Worker>,
     downloader: Option<updates::Worker>,
@@ -1611,6 +1613,8 @@ impl<'a> Pages<'a> {
             servers: Arc::new(Mutex::new(Vec::new())),
             wlan: None,
             scanned_at: Instant::now(),
+            pending_wlan: None,
+            pending_unlock: None,
             checker: None,
             downloader: None,
             skyward_checker: None,
@@ -1743,6 +1747,13 @@ impl<'a> Pages<'a> {
                 None
             });
             self.wlan = Some(wlan::Worker::start(w.clone(), modules, libraries, self.servers.clone())?);
+            let auto = wlan::Auto {
+                enabled: self.app.state.auto_wlan,
+                saved: self.app.state.saved_wlan.iter().map(|s| wlan::Saved { ssid: s.ssid.clone(), name: s.name.clone(), security: s.security, password: s.password.0.clone() }).collect(),
+            };
+            if self.app.state.auto_wlan {
+                if let Some(worker) = &self.wlan { worker.send(wlan::Command::Auto(auto)); worker.send(wlan::Command::On); }
+            }
         }
         self.scanned_at = Instant::now();
         self.app.state.update_server = cfg.update.is_some();
@@ -2764,14 +2775,26 @@ impl Pages<'_> {
     fn wlan_told(&mut self) -> Result<()> {
         if let Some((told, traffic)) = self.wlan.as_ref().map(wlan::Worker::told) {
             if let Some(w) = told {
+                let connected = w.joined.as_ref().is_some_and(|j| matches!(j.stage, skyward_net::wlan::Stage::Connected(_)));
+                let failed = w.joined.as_ref().is_some_and(|j| matches!(&j.stage, skyward_net::wlan::Stage::Failed | skyward_net::wlan::Stage::WrongPassword));
                 self.app.set_wlan(w);
+                if connected {
+                    if let Some((ssid, name, security, password)) = self.pending_wlan.take() {
+                        self.app.remember_wlan(ssid, name, security, password);
+                        let auto = wlan::Auto { enabled: self.app.state.auto_wlan, saved: self.app.state.saved_wlan.iter().map(|s| wlan::Saved { ssid: s.ssid.clone(), name: s.name.clone(), security: s.security, password: s.password.0.clone() }).collect() };
+                        if let Some(worker) = &self.wlan { worker.send(wlan::Command::Auto(auto)); }
+                    }
+                } else if failed {
+                    self.pending_wlan = None;
+                }
             }
             if let Some(t) = traffic {
                 self.app.set_traffic(t);
             }
         }
         let wlan_on = self.app.state.wlan.as_ref().is_some_and(|w| w.power == WlanPower::On);
-        if self.app.screen() == Screen::Wlan && wlan_on && self.scanned_at.elapsed() >= SCAN_EVERY {
+        let auto_waiting = self.app.state.auto_wlan && self.app.state.wlan.as_ref().is_some_and(|w| w.joined.is_none());
+        if (self.app.screen() == Screen::Wlan || auto_waiting) && wlan_on && self.scanned_at.elapsed() >= SCAN_EVERY {
             self.scanned_at = Instant::now();
             wlan_worker(&self.wlan)?.send(wlan::Command::Scan);
         }
@@ -2981,6 +3004,17 @@ impl Pages<'_> {
         }
     }
 
+    /// Start one remembered screen-lock attempt after the DATA partition reports a locked user.
+    fn start_auto_unlock(&mut self) -> Result<()> {
+        if self.decryptor.is_some() { return Ok(()); }
+        if let Some(Effect::Unlock { user, code }) = self.app.auto_unlock().into_iter().next() {
+            self.pending_unlock = Some((user, code.clone()));
+            let job = decrypt::Job::Unlock { closed: self.closed.clone(), user, credential: code.into_bytes() };
+            self.decryptor = Some(Decryptor::start(job)?);
+        }
+        Ok(())
+    }
+
     /// How opening the data partition, or a user's own files in it, ended.
     fn decrypt_told(&mut self, now: u64) -> Result<()> {
         let Some(ended) = self.decryptor.as_ref().and_then(Decryptor::ended) else { return Ok(()) };
@@ -2992,6 +3026,7 @@ impl Pages<'_> {
                 }
                 self.closed = opening.closed;
                 show_closed(&mut self.app, &self.closed)?;
+                self.start_auto_unlock()?;
                 follow_system_zone(&mut self.app, kept_time_zone()?.as_deref(), &self.info)?;
             }
             decrypt::Ended::Opened(Err(why)) => {
@@ -3006,10 +3041,13 @@ impl Pages<'_> {
                 self.app.data_failed(why);
             }
             decrypt::Ended::Unlocked(Ok(still)) => {
+                if let Some((user, code)) = self.pending_unlock.take() { self.app.remember_data(user, code); }
                 self.closed = still;
                 show_closed(&mut self.app, &self.closed)?;
+                self.start_auto_unlock()?;
             }
             decrypt::Ended::Unlocked(Err(why)) => {
+                self.pending_unlock = None;
                 skyward_sys::kmsg(&format!("what was entered did not open the user's files: {why}"))?;
                 let said = skyward_ui::fmt::unlock_refusal(self.app.state.lang, &why);
                 self.app.unlock_failed(said, now);
@@ -3320,6 +3358,7 @@ impl Pages<'_> {
             }
             Effect::Unlock { user, code } => {
                 ensure!(self.decryptor.is_none(), "the data partition is being opened already");
+                self.pending_unlock = Some((user, code.clone()));
                 let job = decrypt::Job::Unlock { closed: self.closed.clone(), user, credential: code.into_bytes() };
                 self.decryptor = Some(Decryptor::start(job)?);
             }
@@ -3368,9 +3407,14 @@ impl Pages<'_> {
                 wlan_worker(&self.wlan)?.send(wlan::Command::Scan);
             }
             Effect::JoinWlan { ssid, name, security, password } => {
+                self.pending_wlan = Some((ssid.clone(), name.clone(), security, password.0.clone()));
                 wlan_worker(&self.wlan)?.send(wlan::Command::Join { ssid, name, security, password: password.0 })
             }
             Effect::LeaveWlan => wlan_worker(&self.wlan)?.send(wlan::Command::Leave),
+            Effect::WlanAuto { enabled, saved } => {
+                let auto = wlan::Auto { enabled, saved: saved.into_iter().map(|s| wlan::Saved { ssid: s.ssid, name: s.name, security: s.security, password: s.password.0 }).collect() };
+                wlan_worker(&self.wlan)?.send(wlan::Command::Auto(auto));
+            }
             Effect::CheckUpdate => self.check_update()?,
             Effect::Download(release) => self.download(release, now)?,
             Effect::StopDownload => self.downloader.as_ref().context("there is no download to stop")?.stop(),

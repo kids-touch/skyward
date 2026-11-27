@@ -7,8 +7,9 @@
 use anyhow::{Context, Result};
 use skyward_block::mount;
 use skyward_ui::settings::{Kept, Settings};
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Write};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
 const METADATA: &str = "/metadata";
@@ -57,10 +58,25 @@ pub fn write(settings: &Settings) -> Result<()> {
 
 fn write_file(settings: &Settings) -> Result<()> {
     fs::create_dir_all(FOLDER).with_context(|| format!("make {FOLDER}"))?;
-    let mut file = File::create(WRITING).with_context(|| format!("make {WRITING}"))?;
+    // Screen-lock and WLAN credentials are stored here in clear text.
+    // Restrict the directory and temporary/final files rather than relying
+    // on the recovery's process umask.
+    fs::set_permissions(FOLDER, fs::Permissions::from_mode(0o700))
+        .with_context(|| format!("protect {FOLDER}"))?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(WRITING)
+        .with_context(|| format!("make {WRITING}"))?;
+    file.set_permissions(fs::Permissions::from_mode(0o600))
+        .with_context(|| format!("protect {WRITING}"))?;
     file.write_all(settings.text().as_bytes()).with_context(|| format!("write {WRITING}"))?;
     file.sync_all().with_context(|| format!("write {WRITING}"))?;
     fs::rename(WRITING, FILE).with_context(|| format!("move {WRITING} over {FILE}"))?;
+    fs::set_permissions(FILE, fs::Permissions::from_mode(0o600))
+        .with_context(|| format!("protect {FILE}"))?;
     File::open(FOLDER).and_then(|folder| folder.sync_all()).with_context(|| format!("write {FOLDER}"))
 }
 

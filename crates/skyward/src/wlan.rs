@@ -61,6 +61,12 @@ const TRAFFIC: Duration = Duration::from_secs(1);
 /// How long after the network gave no address it is asked again.
 const RETRY: Duration = Duration::from_secs(10);
 
+/// A remembered network and the automatic reconnect policy.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Saved { pub ssid: Vec<u8>, pub name: String, pub security: Security, pub password: String }
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Auto { pub enabled: bool, pub saved: Vec<Saved> }
+
 /// What the screen asks of the WLAN.
 pub enum Command {
     On,
@@ -68,6 +74,7 @@ pub enum Command {
     Scan,
     Join { ssid: Vec<u8>, name: String, security: Security, password: String },
     Leave,
+    Auto(Auto),
 }
 
 /// What comes to the thread: a command, how asking for an address went,
@@ -109,7 +116,7 @@ impl Worker {
         let (inbox, asked) = worker::telling().context("make the WLAN thread's inbox")?;
         let back = inbox.clone();
         let worker = worker::Worker::start("wlan", move |tell| {
-            let mut s = Station { cfg, modules, libraries, servers, state: Wlan::default(), running: None, back, tell };
+            let mut s = Station { cfg, modules, libraries, servers, state: Wlan::default(), running: None, back, tell, auto: Auto::default(), auto_tried: Vec::new() };
             s.run(&asked);
         })?;
         Ok(Worker { inbox, worker })
@@ -214,6 +221,8 @@ struct Station {
     /// network reaches, answers to: the thread's own inbox.
     back: Teller<Inbox>,
     tell: Teller<Report>,
+    auto: Auto,
+    auto_tried: Vec<Vec<u8>>,
 }
 
 impl Station {
@@ -276,6 +285,7 @@ impl Station {
                 }
                 self.state.joined = Some(joined);
             }
+            Command::Auto(auto) => { self.auto = auto; self.auto_tried.clear(); self.try_auto(); }
             Command::Leave => {
                 self.unaddress();
                 if let Some(r) = &self.running
@@ -343,6 +353,7 @@ impl Station {
     }
 
     fn off(&mut self) {
+        self.auto_tried.clear();
         self.unaddress();
         let driving = self.running.is_some() || Path::new("/sys/class/net").join(&self.cfg.interface).exists();
         if let Some(mut r) = self.running.take() {
@@ -411,7 +422,23 @@ impl Station {
         }
         self.state.networks = wlan::networks(&found);
         r.found = found;
+        self.try_auto();
         Ok(())
+    }
+
+    /// Join the strongest visible remembered network once per WLAN session.
+    fn try_auto(&mut self) {
+        if !self.auto.enabled || self.state.joined.is_some() || self.running.is_none() { return; }
+        let candidate = self.state.networks.iter()
+            .filter(|n| !self.auto_tried.contains(&n.ssid))
+            .filter_map(|n| self.auto.saved.iter().find(|s| s.ssid == n.ssid).map(|s| (n.signal, s.clone())))
+            .max_by_key(|(signal, _)| *signal);
+        let Some((_, saved)) = candidate else { return; };
+        self.auto_tried.push(saved.ssid.clone());
+        let joined = Joined { ssid: saved.ssid, name: saved.name, security: saved.security, stage: Stage::Joining };
+        if let Err(e) = self.join(&joined, &saved.password) {
+            let _ = skyward_sys::kmsg(&format!("automatic WLAN join failed: {e:#}"));
+        } else { self.state.joined = Some(joined); }
     }
 
     fn joining(&mut self, told: &Told) {
