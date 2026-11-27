@@ -104,10 +104,10 @@ fn values_of(text: &str, key: &str) -> Vec<String> {
             if let Some(end) = value.find('"') {
                 found.push(value[..end].to_string());
             }
-        } else if let Some(value) = rest.split_once('>').map(|(_, after)| after) {
-            if let Some(end) = value.find('<') {
-                found.push(value[..end].to_string());
-            }
+        } else if let Some(value) = rest.split_once('>').map(|(_, after)| after)
+            && let Some(end) = value.find('<')
+        {
+            found.push(value[..end].to_string());
         }
         at = from;
     }

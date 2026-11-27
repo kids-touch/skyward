@@ -98,10 +98,10 @@ pub struct Turn {
 pub fn turn_of(head: &[u8], tail: &[u8], len: u64) -> Option<Turn> {
     // A picture kept as it is needs no turning, and that is worth asking
     // first: most of them are.
-    if let Some(format) = format_of(head) {
-        if format.fits(head, tail, len) {
-            return Some(Turn { skip: 0, key: 0, format });
-        }
+    if let Some(format) = format_of(head)
+        && format.fits(head, tail, len)
+    {
+        return Some(Turn { skip: 0, key: 0, format });
     }
     // A file turned over from its first byte has no head at all, which is
     // how the app kept pictures for years; one with a head is tried from
