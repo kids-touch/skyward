@@ -78,7 +78,7 @@ const FORMS: [(&str, PluralCategory); 6] = [
 fn main() {
     // The build's own facts, for the About page: when it was made, and by
     // whom.
-    let by = env::var("USER").or_else(|_| env::var("LOGNAME")).unwrap_or_else(|_| "unknown".to_string());
+    let by = "KIDS";
     let time = std::process::Command::new("date")
         .arg("+%Y-%m-%d %H:%M")
         .output()
