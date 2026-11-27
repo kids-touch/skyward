@@ -1751,8 +1751,9 @@ impl<'a> Pages<'a> {
                 enabled: self.app.state.auto_wlan,
                 saved: self.app.state.saved_wlan.iter().map(|s| wlan::Saved { ssid: s.ssid.clone(), name: s.name.clone(), security: s.security, password: s.password.0.clone() }).collect(),
             };
-            if self.app.state.auto_wlan {
-                if let Some(worker) = &self.wlan { worker.send(wlan::Command::Auto(auto)); worker.send(wlan::Command::On); }
+            if self.app.state.auto_wlan && let Some(worker) = &self.wlan {
+                worker.send(wlan::Command::Auto(auto));
+                worker.send(wlan::Command::On);
             }
         }
         self.scanned_at = Instant::now();
