@@ -81,6 +81,7 @@ pub fn render(screen: Screen, cx: &Ctx) -> Frame {
         Screen::Restore => restore(cx),
         Screen::RestoreBackup => restore_backup(cx),
         Screen::BackupJob => backup_job(cx),
+        Screen::Rescue => rescue(cx),
         Screen::Advanced => advanced(cx),
         Screen::Files => files(cx),
         Screen::FileInfo => file_info(cx),
@@ -289,6 +290,7 @@ pub fn home(cx: &Ctx) -> Frame {
         Row::new(l.pick(texts::page::RESTORE)).icon(PURPLE, Icon::Restore),
         Row::new(l.pick(texts::page::MOUNT)).icon(SLATE, Icon::Mount),
         Row::new(l.pick(texts::page::DECRYPT)).icon(BLUE, Icon::Lock).trail(Trail::Value(fmt::data(l, &cx.state.data))),
+        Row::new(if l == Lang::Hans { "数据救援" } else { "Data rescue" }).icon(ORANGE, Icon::Restore),
     ]);
     out.extend(hits(&tools.rows, &[
         Action::Open(Screen::Install),
@@ -296,6 +298,7 @@ pub fn home(cx: &Ctx) -> Frame {
         Action::Open(Screen::Restore),
         Action::Open(Screen::Mount),
         Action::Open(Screen::Decrypt),
+        Action::Open(Screen::Rescue),
     ]));
     y = tools.bottom + t.m.card_gap;
     let target = l.pick(REBOOT_TARGETS[cx.state.reboot].0);
@@ -315,6 +318,57 @@ pub fn home(cx: &Ctx) -> Frame {
     // away.
     let height = fitted(t, system.bottom).max(t.m.h + fold.span.ceil() as u32);
     Frame { back: false, fold: Some(fold), ..Frame::new(t, c.crop_height(height), out, HOME_TITLE, cards_top) }
+}
+
+/// Find and copy pictures, videos, documents and WeChat data out of /data.
+pub fn rescue(cx: &Ctx) -> Frame {
+    let (t, f, s, l) = (cx.t, cx.f, &cx.state.rescue, cx.state.lang);
+    let mut c = long_page(cx);
+    let mut out = Vec::new();
+    let mut y = t.m.content_top;
+    let labels = if l == Lang::Hans { ["图片", "视频", "文档", "微信数据"] } else { ["Pictures", "Videos", "Documents", "WeChat data"] };
+    let mut rows = Vec::new();
+    for (i, label) in labels.iter().enumerate() {
+        rows.push(Row::new(*label).trail(Trail::Check(s.kinds[i])));
+    }
+    let list = widgets::list(&mut c, t, f, y, &rows);
+    out.extend(hits(&list.rows, &[Action::RescueKind(0), Action::RescueKind(1), Action::RescueKind(2), Action::RescueKind(3)]));
+    y = list.bottom + t.m.card_gap;
+    let mut controls = Vec::new();
+    let mut actions = Vec::new();
+    if s.running {
+        controls.push(Row::new(if l == Lang::Hans { "停止当前任务" } else { "Stop current task" }).icon(RED, Icon::Power));
+        actions.push(Action::StopRescue);
+    } else {
+        controls.push(Row::new(if l == Lang::Hans { "开始扫描" } else { "Start scan" }).icon(GREEN, Icon::More));
+        actions.push(Action::StartRescueScan);
+        if s.found > 0 {
+            controls.push(Row::new(if l == Lang::Hans { "导出已找到的数据" } else { "Export found data" }).icon(BLUE, Icon::Backup));
+            actions.push(Action::StartRescueExport);
+        }
+    }
+    let buttons = widgets::list(&mut c, t, f, y, &controls);
+    out.extend(hits(&buttons.rows, &actions));
+    y = buttons.bottom + t.m.card_gap;
+    let info = if l == Lang::Hans {
+        format!("{} · 已检查 {} 个文件 · 找到 {} 个 · {} MB",
+            if s.running { if s.exporting { "正在导出" } else { "正在扫描" } } else { "任务空闲" },
+            s.seen, s.found, s.bytes / 1_048_576)
+    } else {
+        format!("{} · checked {} files · found {} · {} MB",
+            if s.running { if s.exporting { "Exporting" } else { "Scanning" } } else { "Idle" },
+            s.seen, s.found, s.bytes / 1_048_576)
+    };
+    y = widgets::footnote(&mut c, t, f, y, &info);
+    if !s.at.is_empty() { y = widgets::footnote(&mut c, t, f, y, &s.at); }
+    if let Some(saved) = &s.saved { y = widgets::footnote(&mut c, t, f, y, saved); }
+    if let Some(result) = &s.outcome { y = widgets::footnote(&mut c, t, f, y, result); }
+    y = widgets::footnote(&mut c, t, f, y, if l == Lang::Hans {
+        "提示：请先解锁并打开 Data。微信数据库解密需要对应用户数据可读；原始数据不会被删除。导出位置：内部存储/SkywardRescue。"
+    } else {
+        "Open and unlock Data first. WeChat decryption requires readable user data. Originals are not deleted. Exports go to internal storage/SkywardRescue."
+    });
+    Frame::new(t, fit(c, t, y), out, if l == Lang::Hans { "数据救援" } else { "Data rescue" }, t.m.content_top)
 }
 
 /// Root's own page: the managers installed, their modules, and the switch
