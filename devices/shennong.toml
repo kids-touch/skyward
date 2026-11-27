@@ -31,6 +31,16 @@ load = ["synaptics_tcm2"]
 [touch]
 writes = [{ path = "/sys/class/touch/touch_dev/enable_touch_raw", value = "0" }]
 
+# The kernel's signed rfkill module is kept in system_dlkm's versioned tree.
+# The flattened module folder used by the recovery may carry a different copy;
+# put the running kernel's own module there before WLAN is brought up.
+[[service]]
+path = "/system/bin/sh"
+args = ["-c", "V=$(ls -d /system_dlkm/lib/modules/*/kernel/net/rfkill 2>/dev/null | head -1) && mount --bind \"$V/rfkill.ko\" /system_dlkm/flatten/lib/modules/rfkill.ko || true"]
+oneshot = true
+user = "root"
+groups = ["root"]
+
 # What the phone's own init runs once the system has finished starting, as
 # kernel-post-boot in /vendor/etc/init/hw/init.qti.kernel.rc. The kernel
 # starts the CPU clusters on the performance governor, which holds them at
@@ -46,7 +56,7 @@ mounted = ["persist"]
 [[service]]
 path = "/vendor/bin/sh"
 args = ["/vendor/bin/init.kernel.post_boot.sh"]
-libraries = ["/system/lib64", "/vendor/lib64"]
+libraries = ["/vendor/lib64", "/system/lib64"]
 oneshot = true
 user = "root"
 groups = ["root", "system", "wakelock", "graphics"]
@@ -66,11 +76,11 @@ writes = [{ path = "/sys/kernel/cnss/fs_ready", value = "1" }]
 release = [{ path = "/sys/kernel/cnss/fs_ready", value = "0" }]
 firmware = [
     { name = "wlan/qca_cld/kiwi_v2/WCNSS_qcom_cfg.ini", path = "/vendor/etc/wifi/kiwi_v2/WCNSS_qcom_cfg.ini" },
-    { name = "wlan/qca_cld/kiwi_v2/wlan_mac.bin", partition = "persist", path = "wlan/wlan_mac.bin", optional = true },
+    { name = "wlan/qca_cld/kiwi_v2/wlan_mac.bin", partition = "persist", path = "kiwi_v2/wlan_mac.bin" },
 ]
 interface = "wlan0"
 supplicant = "/vendor/bin/hw/wpa_supplicant"
-libraries = ["/system/lib64", "/vendor/lib64"]
+libraries = ["/vendor/lib64", "/system/lib64"]
 service = "android.hardware.wifi.supplicant.ISupplicant/default"
 probe = "http://connect.rom.miui.com/generate_204"
 
