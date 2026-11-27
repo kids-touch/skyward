@@ -36,6 +36,7 @@ pub struct Haptics {
     strength: Strength,
     /// Whether the driver is given the strength in the samples it plays.
     scale_samples: bool,
+    max_amplitude: f32,
     /// The click playing, by its slot and its count, until it is taken
     /// away; a click taken away early by the next is not taken away again.
     playing: Arc<Mutex<Option<(i16, u64)>>>,
@@ -66,11 +67,12 @@ impl Haptics {
             }
             None => {
                 eprintln!("haptics {}: clicks and ticks made for a motor swinging at {hz} Hz", path.display());
-                Click::Samples { data: made(hz), rate: RATE }
+                Click::Samples { data: made(hz, cfg.drive_swings), rate: RATE }
             }
         };
         let ticks = Click::Samples { data: ticks(hz), rate: TICKS_RATE };
-        Ok(Haptics { dev, click, ticks, strength: cfg.strength, scale_samples: cfg.scale_samples, playing: Arc::new(Mutex::new(None)), clicks: 0 })
+        let max_amplitude = cfg.max_amplitude.unwrap_or(cfg.strength.strongest).min(cfg.strength.strongest);
+        Ok(Haptics { dev, click, ticks, strength: cfg.strength, scale_samples: cfg.scale_samples, max_amplitude, playing: Arc::new(Mutex::new(None)), clicks: 0 })
     }
 
     /// One short click at the strength the slider's `position` gives, after
@@ -93,6 +95,8 @@ impl Haptics {
             erase(&self.dev, slot).context("take away the click still playing")?;
         }
         let effect = if ticks { &self.ticks } else { &self.click };
+        // Keep normal clicks below the motor's measured safe amplitude.
+        let share = if ticks { share } else { share.min(self.max_amplitude) };
         let loaded = upload(&self.dev, effect, share, self.scale_samples).context("load the click")?;
         play(&mut self.dev, loaded.slot).context("play the click")?;
         self.clicks += 1;
@@ -126,7 +130,7 @@ pub fn probe(cfg: &skyward_config::Haptics, position: f32, ticks: bool) -> Resul
     let (what, strength, length) = if ticks {
         ("ticks", TICKS_STRENGTH, haptics.ticks()?)
     } else {
-        ("click", share(&cfg.strength, position), haptics.click(position)?)
+        ("click", share(&cfg.strength, position).min(cfg.max_amplitude.unwrap_or(cfg.strength.strongest)), haptics.click(position)?)
     };
     // Once it has played out, what played goes with the device as the
     // command ends.

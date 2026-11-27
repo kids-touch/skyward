@@ -34,6 +34,8 @@ mod readings;
 #[cfg(target_os = "android")]
 mod relabel;
 #[cfg(target_os = "android")]
+pub mod rescue;
+#[cfg(target_os = "android")]
 mod root;
 #[cfg(target_os = "android")]
 mod secure;
