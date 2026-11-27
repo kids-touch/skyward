@@ -251,6 +251,13 @@ pub struct State {
     /// The password typed on the password page or the page that adds a
     /// network, and whether it shows.
     pub password: String,
+    /// Keep screen-lock credentials in the protected metadata settings.
+    pub remember_data: bool,
+    pub saved_data: Vec<SavedData>,
+    pub data_auto_tried: Vec<u32>,
+    /// Keep WLAN credentials and reconnect after the radio starts.
+    pub auto_wlan: bool,
+    pub saved_wlan: Vec<SavedWlan>,
     pub show_password: bool,
     /// The phone maker's update server is known, and the update page asks
     /// it.
@@ -382,6 +389,11 @@ impl Default for State {
             details: None,
             adding: None,
             password: String::new(),
+            remember_data: true,
+            saved_data: Vec::new(),
+            data_auto_tried: Vec::new(),
+            auto_wlan: true,
+            saved_wlan: Vec::new(),
             show_password: false,
             update_server: false,
             check: Check::Idle,

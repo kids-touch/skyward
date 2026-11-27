@@ -14,6 +14,14 @@ impl std::fmt::Debug for Secret {
     }
 }
 
+/// A network kept for automatic reconnection.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SavedWlan { pub ssid: Vec<u8>, pub name: String, pub security: Security, pub password: Secret }
+
+/// A DATA credential kept for automatic unlock.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SavedData { pub user: u32, pub code: Secret }
+
 /// A network being added by hand, as its page shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Adding {
@@ -49,6 +57,17 @@ pub(super) fn refused(l: Lang, security: Security, password: &str) -> Option<&'s
 }
 
 impl App {
+    /// Keep a successfully joined network, most recent first.
+    pub fn remember_wlan(&mut self, ssid: Vec<u8>, name: String, security: Security, password: String) {
+        if !self.state.auto_wlan || !security.joinable() || ssid.is_empty() { return; }
+        self.state.saved_wlan.retain(|s| s.ssid != ssid);
+        self.state.saved_wlan.insert(0, SavedWlan { ssid, name, security, password: Secret(password) });
+        self.state.saved_wlan.truncate(16);
+        self.refresh();
+    }
+
+    pub fn forget_saved_wlan(&mut self, ssid: &[u8]) { self.state.saved_wlan.retain(|s| s.ssid != ssid); self.refresh(); }
+
     /// How the WLAN stands, as the runtime last told it.
     pub fn set_wlan(&mut self, w: Wlan) {
         if self.state.wlan.as_ref() == Some(&w) {

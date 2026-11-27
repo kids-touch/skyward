@@ -753,6 +753,8 @@ pub enum Effect {
     ScanWlan,
     JoinWlan { ssid: Vec<u8>, name: String, security: Security, password: Secret },
     LeaveWlan,
+    /// Update the WLAN worker's remembered-network policy.
+    WlanAuto { enabled: bool, saved: Vec<SavedWlan> },
     /// Ask the update server for the newest system, telling what it
     /// answered with [`App::update_checked`].
     CheckUpdate,

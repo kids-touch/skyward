@@ -140,10 +140,14 @@ impl App {
                     Switch::AvbVerity => &mut self.state.avb_verity,
                     Switch::AvbVerification => &mut self.state.avb_verification,
                     Switch::KernelSuOnline => &mut self.state.kernel_su_online,
+                    Switch::RememberData => &mut self.state.remember_data,
+                    Switch::AutoWlan => &mut self.state.auto_wlan,
                     Switch::Wlan | Switch::SystemTimeZone => unreachable!("the switch is turned above"),
                 };
                 *on = !*on;
                 let now_on = *on;
+                if switch == Switch::RememberData && !now_on { self.state.saved_data.clear(); self.state.data_auto_tried.clear(); }
+                if switch == Switch::AutoWlan && !now_on { self.state.saved_wlan.clear(); }
                 if matches!(switch, Switch::AodTap | Switch::WakeTap) {
                     self.dark_touch = None;
                     self.last_tap = None;
@@ -151,6 +155,9 @@ impl App {
                 self.refresh();
                 if switch == Switch::FileTransfer {
                     return vec![Effect::FileTransfer(now_on)];
+                }
+                if switch == Switch::AutoWlan {
+                    return vec![Effect::WlanAuto { enabled: now_on, saved: self.state.saved_wlan.clone() }];
                 }
             }
             Action::MountToggle(i) => {

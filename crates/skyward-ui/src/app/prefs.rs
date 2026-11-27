@@ -34,6 +34,8 @@ pub enum Switch {
     /// over.
     KeepRecovery,
     Wlan,
+    RememberData,
+    AutoWlan,
     /// Show the password typed rather than a dot for each character.
     ShowPassword,
     /// A touch on the dark panel brings up the always-on screen.

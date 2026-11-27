@@ -83,6 +83,26 @@ impl App {
         self.refresh();
     }
 
+    /// Remember a screen-lock credential after the runtime confirms it worked.
+    pub fn remember_data(&mut self, user: u32, code: String) {
+        if !self.state.remember_data || code.is_empty() { return; }
+        self.state.saved_data.retain(|d| d.user != user);
+        self.state.saved_data.push(SavedData { user, code: Secret(code) });
+        self.refresh();
+    }
+
+    /// Try a remembered credential once for this DATA unlock cycle.
+    pub fn auto_unlock(&mut self) -> Vec<Effect> {
+        let Data::Locked { user, keys, checking: false } = self.state.data else { return Vec::new() };
+        if !self.state.remember_data || self.state.data_auto_tried.contains(&user) { return Vec::new(); }
+        let Some(saved) = self.state.saved_data.iter().find(|d| d.user == user) else { return Vec::new() };
+        let code = saved.code.0.clone();
+        self.state.data_auto_tried.push(user);
+        self.state.data = Data::Locked { user, keys, checking: true };
+        self.refresh();
+        vec![Effect::Unlock { user, code }]
+    }
+
     /// The data partition did not open, and why.
     pub fn data_failed(&mut self, why: String) {
         self.log(format!("! data did not open: {why}"));
@@ -104,6 +124,7 @@ impl App {
     /// Open the data partition, the decrypt page saying so meanwhile.
     pub(super) fn open_data(&mut self) -> Vec<Effect> {
         self.log("> opening the data partition");
+        self.state.data_auto_tried.clear();
         self.state.data = Data::Opening;
         self.refresh();
         vec![Effect::OpenData]
