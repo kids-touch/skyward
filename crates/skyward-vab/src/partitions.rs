@@ -473,13 +473,55 @@ pub fn mounted_partitions(slot: Slot) -> Result<Vec<Mounted>> {
 pub fn release_partitions(slot: Slot, busy: &[PathBuf]) -> Result<()> {
     for m in mounted_partitions(slot)?.into_iter().rev() {
         if busy.contains(&m.mount_point) {
-            mount::umount_detach_over(&m.mount_point)?;
-        } else {
-            mount::umount_over(&m.mount_point)?;
-            snapshots::unmap_snapshot(&m.partition)?;
+            // Files belonging to a service that must keep running are pinned
+            // by the caller. Detach the mount, but leave its device-mapper
+            // device alive while those references may still exist.
+            mount::umount_detach_over(&m.mount_point)
+                .with_context(|| format!("detach busy partition {} at {}", m.partition, m.mount_point.display()))?;
+            continue;
+        }
+
+        match mount::umount_over(&m.mount_point) {
+            Ok(()) => snapshots::unmap_snapshot(&m.partition)?,
+            Err(error) if is_busy(&error) => {
+                // The service pin list is intentionally limited to known
+                // long-lived Android services. A process or kernel component
+                // can still acquire a reference after that list was built.
+                // A lazy detach removes the mount from the namespace while
+                // allowing existing references to drain; do not remove the
+                // snapshot/device-mapper target in this case.
+                let holders = match mount::holding(devnum(&m.device)?) {
+                    Ok(holders) if holders.is_empty() => "no userspace process holder identified".to_string(),
+                    Ok(holders) => holders
+                        .into_iter()
+                        .map(|(pid, name)| format!("{name} (pid {pid})"))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    Err(scan_error) => format!("holder scan failed: {scan_error:#}"),
+                };
+                mount::umount_detach_over(&m.mount_point).with_context(|| {
+                    format!(
+                        "ordinary unmount of {} at {} returned EBUSY ({error:#}); holders: {holders}",
+                        m.partition,
+                        m.mount_point.display()
+                    )
+                })?;
+                // Keep the mapped snapshot until the detached filesystem's
+                // final references are gone. Removing it here could disrupt
+                // processes that still use files from the old system.
+            }
+            Err(error) => return Err(error).with_context(|| format!("unmount {} at {}", m.partition, m.mount_point.display())),
         }
     }
     Ok(())
+}
+
+/// Whether an unmount failed because the mount is still in use.
+fn is_busy(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .filter_map(|cause| cause.downcast_ref::<std::io::Error>())
+        .any(|cause| cause.raw_os_error() == Some(libc::EBUSY))
 }
 
 /// Undo `mount_partitions`: unmount the slot's partitions where their own
@@ -496,6 +538,24 @@ pub fn unmount_partitions(slot: Slot) -> Result<()> {
         mount::umount(metadata)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod release_tests {
+    use super::is_busy;
+    use anyhow::Context;
+
+    #[test]
+    fn recognizes_busy_unmount_errors_through_anyhow_context() {
+        let error = anyhow::Error::new(std::io::Error::from_raw_os_error(libc::EBUSY)).context("unmount /mnt/system_ext");
+        assert!(is_busy(&error));
+    }
+
+    #[test]
+    fn does_not_treat_other_unmount_errors_as_busy() {
+        let error = anyhow::Error::new(std::io::Error::from_raw_os_error(libc::EINVAL)).context("unmount /mnt/system_ext");
+        assert!(!is_busy(&error));
+    }
 }
 
 #[cfg(all(test, target_os = "android"))]
