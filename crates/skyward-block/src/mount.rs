@@ -362,8 +362,8 @@ mod sys {
 
     #[derive(Default)]
     struct Parked {
-        /// Original mount point and where it waits.
-        moved: Vec<(PathBuf, PathBuf)>,
+        /// Original mount point, where it waits, and whether it is a directory mount.
+        moved: Vec<(PathBuf, PathBuf, bool)>,
         /// Shared mounts made private for the moves.
         privatized: Vec<PathBuf>,
     }
@@ -391,17 +391,40 @@ mod sys {
         }
         for (i, m) in top.iter().enumerate() {
             let at = Path::new(PARK).join(i.to_string());
-            fs::create_dir_all(&at).with_context(|| format!("create {}", at.display()))?;
-            move_mount(&m.mount_point, &at)?;
-            parked.moved.push((m.mount_point.clone(), at));
+            let is_dir = fs::metadata(&m.mount_point)
+                .with_context(|| format!("inspect mount point {}", m.mount_point.display()))?
+                .is_dir();
+            let parent = at.parent().expect("park path has a parent");
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+            if is_dir {
+                fs::create_dir(&at).with_context(|| format!("create directory mount target {}", at.display()))?;
+            } else {
+                // MS_MOVE requires the destination to have the same kind as
+                // the mount root. A directory placeholder makes moving a
+                // file bind mount fail with EINVAL.
+                fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&at)
+                    .with_context(|| format!("create file mount target {}", at.display()))?;
+            }
+            if let Err(error) = move_mount(&m.mount_point, &at) {
+                if is_dir { let _ = fs::remove_dir(&at); } else { let _ = fs::remove_file(&at); }
+                return Err(error);
+            }
+            parked.moved.push((m.mount_point.clone(), at, is_dir));
         }
         Ok(parked)
     }
 
     fn unpark(parked: Parked) -> Result<()> {
-        for (home, at) in &parked.moved {
+        for (home, at, is_dir) in &parked.moved {
             move_mount(at, home)?;
-            fs::remove_dir(at).with_context(|| format!("remove {}", at.display()))?;
+            if *is_dir {
+                fs::remove_dir(at).with_context(|| format!("remove {}", at.display()))?;
+            } else {
+                fs::remove_file(at).with_context(|| format!("remove {}", at.display()))?;
+            }
         }
         if !parked.moved.is_empty() {
             fs::remove_dir(PARK).with_context(|| format!("remove {PARK}"))?;
@@ -424,7 +447,7 @@ mod sys {
                 return Err(e);
             }
         };
-        if let Some((home, _)) = parked.moved.iter().find(|(home, _)| !home.is_dir()) {
+        if let Some((home, _, _)) = parked.moved.iter().find(|(home, _, _)| !home.is_dir()) {
             let home = home.clone();
             umount(target)?;
             unpark(parked)?;
@@ -457,8 +480,20 @@ mod sys {
         parked.privatized.retain(|p| p != target);
         // What shows at `target` now may lack a folder one of them was on,
         // as the recovery's own root lacks a phone partition's folders.
-        for (home, _) in &parked.moved {
-            fs::create_dir_all(home).with_context(|| format!("make {} to keep the mount there", home.display()))?;
+        for (home, _, is_dir) in &parked.moved {
+            if *is_dir {
+                fs::create_dir_all(home).with_context(|| format!("make {} to keep the mount there", home.display()))?;
+            } else {
+                let parent = home.parent().context("a file mount point has no parent")?;
+                fs::create_dir_all(parent).with_context(|| format!("make {} to keep the mount there", parent.display()))?;
+                if !home.exists() {
+                    fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(home)
+                        .with_context(|| format!("make file mount point {}", home.display()))?;
+                }
+            }
         }
         unpark(parked)
     }
