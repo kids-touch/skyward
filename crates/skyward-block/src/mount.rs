@@ -452,7 +452,7 @@ mod sys {
                 return Err(e);
             }
         };
-        if let Some((home, _, directory)) = parked.moved.iter().find(|(home, _, directory)| {
+        if let Some((home, _, _directory)) = parked.moved.iter().find(|(home, _, directory)| {
             if *directory { !home.is_dir() } else { !home.is_file() }
         }) {
             let home = home.clone();
