@@ -1344,7 +1344,7 @@ struct Pages<'a> {
     backuper: Option<backup::Worker>,
     /// Finding and copying files for the data-rescue page.
     rescue_worker: Option<rescue::Worker>,
-    rescue_found: Vec<rescue::Found>,
+    rescue_found: Vec<skyward_rescue::Found>,
     /// An update's merge followed: one the recovery found under way, which
     /// the kernel took up again as the snapshots were mapped, or one started
     /// on the update page.
