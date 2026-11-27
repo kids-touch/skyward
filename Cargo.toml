@@ -24,6 +24,8 @@ members = [
     "crates/skyward-lp",
     "crates/skyward-bootimg",
     "crates/skyward-systems",
+    "crates/skyward-rescue",
+    "crates/skyward-wechat",
     "crates/skyward-system-init",
 ]
 
