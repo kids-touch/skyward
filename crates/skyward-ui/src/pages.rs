@@ -329,7 +329,7 @@ pub fn rescue(cx: &Ctx) -> Frame {
     let labels = if l == Lang::Hans { ["图片", "视频", "文档", "微信数据"] } else { ["Pictures", "Videos", "Documents", "WeChat data"] };
     let mut rows = Vec::new();
     for (i, label) in labels.iter().enumerate() {
-        rows.push(Row::new(*label).trail(Trail::Check(s.kinds[i])));
+        rows.push(Row::new(label).trail(Trail::Check(s.kinds[i])));
     }
     let list = widgets::list(&mut c, t, f, y, &rows);
     out.extend(hits(&list.rows, &[Action::RescueKind(0), Action::RescueKind(1), Action::RescueKind(2), Action::RescueKind(3)]));
