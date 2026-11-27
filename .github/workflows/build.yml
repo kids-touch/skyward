@@ -50,6 +50,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: Move rescue entry to Advanced
+        run: python3 .github/scripts/apply-rescue-entry.py
       - uses: ./.github/actions/setup
       # The workspace may gain crates whose dependencies are not yet in the
       # committed lockfile. Resolve once here, then keep all checks locked.
@@ -67,6 +69,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: Move rescue entry to Advanced
+        run: python3 .github/scripts/apply-rescue-entry.py
       - uses: ./.github/actions/setup
       # Resolve newly added workspace dependencies before locked builds.
       - name: Resolve the workspace lockfile
