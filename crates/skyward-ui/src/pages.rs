@@ -3377,7 +3377,7 @@ pub fn wlan(cx: &Ctx) -> Frame {
             let others: Vec<(usize, &Network)> = w.networks.iter().enumerate()
                 .filter(|(_, n)| {
                     w.joined.as_ref().is_none_or(|j| j.ssid != n.ssid)
-                        && !saved_ssids.iter().any(|ssid| *ssid == n.ssid.as_slice())
+                        && !saved_ssids.contains(&n.ssid.as_slice())
                 })
                 .collect();
             let (below, rescan) = widgets::section_action(&mut c, t, f, y, l.pick(texts::wlan::NEARBY), l.pick(texts::wlan::REFRESH));
