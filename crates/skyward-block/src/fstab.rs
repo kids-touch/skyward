@@ -100,6 +100,34 @@ pub fn device(entry: &Entry) -> Result<String> {
     anyhow::bail!("neither {path} nor {} is here", by_name.display())
 }
 
+
+/// Mount the filesystem the phone's table names at `mount_point`.
+/// A mount point may have alternatives for different filesystem formats.
+pub fn mount_at(mount_point: &str) -> Result<PathBuf> {
+    let entries = read(mount_point)?;
+    anyhow::ensure!(!entries.is_empty(), "the phone's own table has no {mount_point}");
+    let at = PathBuf::from(mount_point);
+    if crate::mount::is_mount_point(&at)? {
+        return Ok(at);
+    }
+    std::fs::create_dir_all(&at).with_context(|| format!("make {}", at.display()))?;
+    let mut errors = Vec::new();
+    for entry in entries {
+        let source = match device(&entry) {
+            Ok(source) => source,
+            Err(e) => {
+                errors.push(format!("{}: {e:#}", entry.filesystem));
+                continue;
+            }
+        };
+        match crate::mount::mount(Path::new(&source), &at, &entry.filesystem, &entry.options) {
+            Ok(()) => return Ok(at),
+            Err(e) => errors.push(format!("{}: {e:#}", entry.filesystem)),
+        }
+    }
+    anyhow::bail!("could not mount {mount_point}: {}", errors.join("; "))
+}
+
 /// Mount the partition `name` where and as the phone's own table mounts
 /// it, and say where. Whatever shows there already, as what an earlier run
 /// of the recovery service mounted does, is taken as it is.
