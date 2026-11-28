@@ -82,7 +82,8 @@ pub fn newest(answer: &str, codename: &str, running: &str) -> Result<Newest> {
     let this = semver::Version::parse(running).with_context(|| format!("this build's version is {running}"))?;
     // Test releases use tags such as test-e0e0be4, so the ZIP name is
     // matched against the tag, not the semantic version in the title.
-    let start = format!("skyward-{tag}-{codename}-");
+    let build_version = tag.strip_prefix("test-").or_else(|| tag.strip_prefix("shennong-")).unwrap_or(&tag);
+let start = format!("skyward-{build_version}-{codename}-");
     let build = match release.assets.into_iter().find(|a| a.name.starts_with(&start) && a.name.ends_with(".zip")) {
         None => None,
         Some(a) => {
