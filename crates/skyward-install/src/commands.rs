@@ -21,7 +21,7 @@ mod zstandard;
 
 /// How much is read and written at a time: a whole partition image may go
 /// through a command.
-const CHUNK: usize = 10 << 20;
+const CHUNK: usize = 4 << 20;
 
 /// What a command reads and writes besides the files it names.
 struct Io<'a> {
