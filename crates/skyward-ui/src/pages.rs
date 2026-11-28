@@ -3321,6 +3321,19 @@ pub fn wlan(cx: &Ctx) -> Frame {
                     y = widgets::footnote(&mut c, t, f, y, &note);
                 }
             }
+            // Saved credentials are listed separately from nearby scan results.
+            // Tapping one joins it with its stored password, without asking again.
+            if !s.saved_wlan.is_empty() {
+                let saved_title = if l == Lang::Hans { "已保存的 WiFi" } else { "Saved Wi-Fi" };
+                y = widgets::section(&mut c, t, f, y, saved_title);
+                let rows: Vec<Row> = s.saved_wlan.iter()
+                    .map(|saved| Row::new(&saved.name).trail(Trail::Network { locked: saved.security.password() }))
+                    .collect();
+                let list = widgets::list(&mut c, t, f, y, &rows);
+                let picks: Vec<Action> = (0..s.saved_wlan.len()).map(Action::JoinSavedNetwork).collect();
+                out.extend(hits(&list.rows, &picks));
+                y = list.bottom + t.m.card_gap;
+            }
             let others: Vec<(usize, &Network)> =
                 w.networks.iter().enumerate().filter(|(_, n)| w.joined.as_ref().is_none_or(|j| j.ssid != n.ssid)).collect();
             let (below, rescan) = widgets::section_action(&mut c, t, f, y, l.pick(texts::wlan::NEARBY), l.pick(texts::wlan::REFRESH));
