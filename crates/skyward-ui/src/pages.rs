@@ -3177,23 +3177,6 @@ pub fn skyward_update(cx: &Ctx) -> Frame {
     }
 
     let y = widgets::section(&mut c, t, f, sources.bottom, l.pick(texts::update::ONLINE));
-    // Keep a manual check action visible even after a previous check answered.
-    // Checking release metadata uses the existing GitHub check effect; the
-    // selected mirror is used for the package download, not release lookup.
-    let y = match &cx.state.skyward_check {
-        SkywardCheck::Asking => widgets::list(
-            &mut c, t, f, y,
-            &[Row::new(l.pick(texts::update::CHECKING)).trail(Trail::None)],
-        ).bottom,
-        _ => {
-            let check = widgets::list(
-                &mut c, t, f, y,
-                &[Row::new(l.pick(texts::update::CHECK)).trail(Trail::None)],
-            );
-            out.extend(hits(&check.rows, &[Action::CheckSkyward]));
-            check.bottom
-        }
-    };
     let y = skyward_online(&mut c, cx, y, &mut out);
     let points = [l.pick(texts::skyward_update::FROM_GITHUB), l.pick(texts::skyward_update::BOTH_SLOTS), l.pick(texts::skyward_update::REBOOT_TO_USE)];
     let y = widgets::notes(&mut c, t, f, y + t.m.card_gap, l.pick(texts::common::NOTES), &points);
@@ -3210,10 +3193,15 @@ fn skyward_online(c: &mut Canvas, cx: &Ctx, y: f32, out: &mut Vec<Hit>) -> f32 {
         SkywardCheck::Asking => return widgets::list(c, t, f, y, &[Row::new(l.pick(texts::update::CHECKING)).trail(Trail::None)]).bottom,
         SkywardCheck::Answered(n) => n,
         other => {
+            let mut row = Row::new(l.pick(texts::update::CHECK));
+            if !s.online() {
+                row = row.subtitle(l.pick(texts::update::WLAN_FIRST));
+            }
+            let check = widgets::list(c, t, f, y, &[row]);
+            out.extend(hits(&check.rows, &[Action::CheckSkyward]));
             return match other {
-                SkywardCheck::Failed(why) => widgets::footnote(c, t, f, y, &fmt::unanswered(l, why)),
-                _ if !s.online() => widgets::footnote(c, t, f, y, l.pick(texts::update::WLAN_FIRST)),
-                _ => y,
+                SkywardCheck::Failed(why) => widgets::footnote(c, t, f, check.bottom, &fmt::unanswered(l, why)),
+                _ => check.bottom,
             };
         }
     };
@@ -3236,7 +3224,13 @@ fn skyward_online(c: &mut Canvas, cx: &Ctx, y: f32, out: &mut Vec<Hit>) -> f32 {
         texts::skyward_update::newest_is(l, version),
     ),
 };
-    let y = widgets::list(c, t, f, y, &[Row::new(&title).icon(GREEN, Icon::Install).subtitle(&detail).trail(Trail::None)]).bottom;
+    let status = widgets::list(c, t, f, y, &[Row::new(&title).icon(GREEN, Icon::Install).subtitle(&detail).trail(Trail::None)]);
+    // Let the current-version card re-run the GitHub check when tapped.
+    // Keep it inert while an update is actively being installed.
+    if !s.updating_skyward() {
+        out.extend(hits(&status.rows, &[Action::CheckSkyward]));
+    }
+    let y = status.bottom;
     if (!newest.newer && !newest.repair) || newest.build.is_none() {
         return y;
     }
@@ -3351,15 +3345,18 @@ pub fn wlan(cx: &Ctx) -> Frame {
                     y = widgets::footnote(&mut c, t, f, y, &note);
                 }
             }
-            // Show saved credentials only while their networks are present in
-            // the latest scan. As soon as one is selected, it moves to the
-            // joined row (including while the connection is still in progress).
+            // Saved networks belong only in the saved section, whether or not
+            // they are currently visible in the latest scan. Once selected,
+            // the network is shown only in the joined row (also while joining).
             let selected_ssid = w.joined.as_ref().map(|joined| joined.ssid.as_slice());
             let saved: Vec<_> = s.saved_wlan.iter().enumerate()
                 .filter(|(_, saved)| {
-                    selected_ssid != Some(saved.ssid.as_slice())
-                        && w.networks.iter().any(|found| found.ssid == saved.ssid)
-                })
+        selected_ssid != Some(saved.ssid.as_slice())
+            && w.networks.iter().any(|n| n.ssid.as_slice() == saved.ssid.as_slice())
+    })
+                .collect();
+            let saved_ssids: Vec<&[u8]> = s.saved_wlan.iter()
+                .map(|saved| saved.ssid.as_slice())
                 .collect();
             if !saved.is_empty() {
                 let saved_title = if l == Lang::Hans { "已保存的 WLAN" } else { "Saved WLANs" };
@@ -3372,8 +3369,12 @@ pub fn wlan(cx: &Ctx) -> Frame {
                 out.extend(hits(&list.rows, &picks));
                 y = list.bottom + t.m.card_gap;
             }
-            let others: Vec<(usize, &Network)> =
-                w.networks.iter().enumerate().filter(|(_, n)| w.joined.as_ref().is_none_or(|j| j.ssid != n.ssid)).collect();
+            let others: Vec<(usize, &Network)> = w.networks.iter().enumerate()
+                .filter(|(_, n)| {
+                    w.joined.as_ref().is_none_or(|j| j.ssid != n.ssid)
+                        && !saved_ssids.contains(&n.ssid.as_slice())
+                })
+                .collect();
             let (below, rescan) = widgets::section_action(&mut c, t, f, y, l.pick(texts::wlan::NEARBY), l.pick(texts::wlan::REFRESH));
             out.push(Hit { rect: rescan, action: Action::Rescan });
             y = below;
