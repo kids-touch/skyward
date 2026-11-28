@@ -53,7 +53,7 @@ use std::fs;
 use std::io::Write;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// How long init may take to hand the USB port to another function: the
@@ -1382,6 +1382,8 @@ struct Pages<'a> {
     switched: bool,
     /// The DNS servers the network joined gave, for looking names up.
     servers: Servers,
+    /// The current lightweight browser navigation, fetched away from the UI thread.
+    browser_rx: Option<mpsc::Receiver<Result<skyward_net::browser::BrowserPage, String>>>,
     /// The WLAN, on a phone whose driver the recovery brings up.
     wlan: Option<wlan::Worker>,
     scanned_at: Instant,
@@ -1642,6 +1644,7 @@ impl<'a> Pages<'a> {
             switch_asked: false,
             switched: false,
             servers: Arc::new(Mutex::new(Vec::new())),
+            browser_rx: None,
             wlan: None,
             scanned_at: Instant::now(),
             pending_wlan: None,
@@ -2008,6 +2011,15 @@ impl<'a> Pages<'a> {
     /// What time passing asks for: the motor's clicks and ticks, and the
     /// status bar's clock drawn again as its minute turns.
     fn tick(&mut self, now: u64) -> Result<()> {
+        let browser_result = self.browser_rx.as_ref().map(|receiver| receiver.try_recv());
+        match browser_result {
+            Some(Ok(page)) => { self.browser_rx = None; self.app.set_browser_page(page); }
+            Some(Err(mpsc::TryRecvError::Disconnected)) => {
+                self.browser_rx = None;
+                self.app.set_browser_page(Err("浏览器加载线程意外退出".into()));
+            }
+            Some(Err(mpsc::TryRecvError::Empty)) | None => {}
+        }
         for fx in self.app.tick(now) {
             match fx {
                 Effect::Haptic => self.click()?,
@@ -3274,6 +3286,20 @@ impl Pages<'_> {
     fn effect(&mut self, fx: Effect, now: u64) -> Result<Vec<Effect>> {
         let cfg = self.cfg;
         match fx {
+            Effect::Browse(url) => {
+                if self.browser_rx.is_some() {
+                    self.app.report("A page is already loading", now);
+                } else {
+                let (send, receive) = mpsc::channel();
+                let servers = self.servers.clone();
+                std::thread::Builder::new().name("skyward-browser".into()).spawn(move || {
+                    let result = skyward_net::browser::open(&url, servers)
+                        .map_err(|error| format!("{error:#}"));
+                    let _ = send.send(result);
+                })?;
+                self.browser_rx = Some(receive);
+                }
+            }
             // Leaving is the user's answer to whatever the request
             // still kept in misc asked.
             Effect::Reboot(target) => {
