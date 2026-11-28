@@ -30,7 +30,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.6-Beta"
+version = "1.0.5-Beta"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
@@ -57,4 +57,16 @@ strip = true
 
 # The UI draws every pixel of every frame; it is built for speed.
 [profile.release.package.skyward-ui]
+opt-level = 3
+
+# Zstandard is on the recovery's ROM-flashing hot path. Keep the bundled
+# libzstd implementation optimized for throughput even though the rest of
+# the recovery favors a smaller binary.
+[profile.release.package.zstd]
+opt-level = 3
+
+[profile.release.package.zstd-safe]
+opt-level = 3
+
+[profile.release.package.zstd-sys]
 opt-level = 3
