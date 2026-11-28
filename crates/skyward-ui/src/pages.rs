@@ -22,6 +22,7 @@ use crate::widgets::{self, Caption, Detail, Fact, Outline, Row, Spec, SystemCard
 use skyward_info::{DeviceInfo, VERSION};
 use skyward_install::{Outcome, Place as FlashPlace, Reflash, Refusal, Stage};
 use skyward_net::download::Progress;
+use skyward_net::github::DownloadSource;
 use skyward_net::supplicant::Security;
 use skyward_net::wlan::{Bands, Network, Power, Stage as Joining};
 use skyward_systems::{Held, Who};
@@ -81,6 +82,7 @@ pub fn render(screen: Screen, cx: &Ctx) -> Frame {
         Screen::Restore => restore(cx),
         Screen::RestoreBackup => restore_backup(cx),
         Screen::BackupJob => backup_job(cx),
+        Screen::Rescue => rescue(cx),
         Screen::Advanced => advanced(cx),
         Screen::Files => files(cx),
         Screen::FileInfo => file_info(cx),
@@ -289,6 +291,7 @@ pub fn home(cx: &Ctx) -> Frame {
         Row::new(l.pick(texts::page::RESTORE)).icon(PURPLE, Icon::Restore),
         Row::new(l.pick(texts::page::MOUNT)).icon(SLATE, Icon::Mount),
         Row::new(l.pick(texts::page::DECRYPT)).icon(BLUE, Icon::Lock).trail(Trail::Value(fmt::data(l, &cx.state.data))),
+        Row::new(if l == Lang::Hans { "数据救援" } else { "Data rescue" }).icon(ORANGE, Icon::Restore),
     ]);
     out.extend(hits(&tools.rows, &[
         Action::Open(Screen::Install),
@@ -296,6 +299,7 @@ pub fn home(cx: &Ctx) -> Frame {
         Action::Open(Screen::Restore),
         Action::Open(Screen::Mount),
         Action::Open(Screen::Decrypt),
+        Action::Open(Screen::Rescue),
     ]));
     y = tools.bottom + t.m.card_gap;
     let target = l.pick(REBOOT_TARGETS[cx.state.reboot].0);
@@ -315,6 +319,57 @@ pub fn home(cx: &Ctx) -> Frame {
     // away.
     let height = fitted(t, system.bottom).max(t.m.h + fold.span.ceil() as u32);
     Frame { back: false, fold: Some(fold), ..Frame::new(t, c.crop_height(height), out, HOME_TITLE, cards_top) }
+}
+
+/// Find and copy pictures, videos, documents and WeChat data out of /data.
+pub fn rescue(cx: &Ctx) -> Frame {
+    let (t, f, s, l) = (cx.t, cx.f, &cx.state.rescue, cx.state.lang);
+    let mut c = long_page(cx);
+    let mut out = Vec::new();
+    let mut y = t.m.content_top;
+    let labels = if l == Lang::Hans { ["图片", "视频", "文档", "微信数据"] } else { ["Pictures", "Videos", "Documents", "WeChat data"] };
+    let mut rows = Vec::new();
+    for (i, label) in labels.iter().enumerate() {
+        rows.push(Row::new(label).trail(Trail::Check(s.kinds[i])));
+    }
+    let list = widgets::list(&mut c, t, f, y, &rows);
+    out.extend(hits(&list.rows, &[Action::RescueKind(0), Action::RescueKind(1), Action::RescueKind(2), Action::RescueKind(3)]));
+    y = list.bottom + t.m.card_gap;
+    let mut controls = Vec::new();
+    let mut actions = Vec::new();
+    if s.running {
+        controls.push(Row::new(if l == Lang::Hans { "停止当前任务" } else { "Stop current task" }).icon(RED, Icon::Power));
+        actions.push(Action::StopRescue);
+    } else {
+        controls.push(Row::new(if l == Lang::Hans { "开始扫描" } else { "Start scan" }).icon(GREEN, Icon::More));
+        actions.push(Action::StartRescueScan);
+        if s.found > 0 {
+            controls.push(Row::new(if l == Lang::Hans { "导出已找到的数据" } else { "Export found data" }).icon(BLUE, Icon::Backup));
+            actions.push(Action::StartRescueExport);
+        }
+    }
+    let buttons = widgets::list(&mut c, t, f, y, &controls);
+    out.extend(hits(&buttons.rows, &actions));
+    y = buttons.bottom + t.m.card_gap;
+    let info = if l == Lang::Hans {
+        format!("{} · 已检查 {} 个文件 · 找到 {} 个 · {} MB",
+            if s.running { if s.exporting { "正在导出" } else { "正在扫描" } } else { "任务空闲" },
+            s.seen, s.found, s.bytes / 1_048_576)
+    } else {
+        format!("{} · checked {} files · found {} · {} MB",
+            if s.running { if s.exporting { "Exporting" } else { "Scanning" } } else { "Idle" },
+            s.seen, s.found, s.bytes / 1_048_576)
+    };
+    y = widgets::footnote(&mut c, t, f, y, &info);
+    if !s.at.is_empty() { y = widgets::footnote(&mut c, t, f, y, &s.at); }
+    if let Some(saved) = &s.saved { y = widgets::footnote(&mut c, t, f, y, saved); }
+    if let Some(result) = &s.outcome { y = widgets::footnote(&mut c, t, f, y, result); }
+    y = widgets::footnote(&mut c, t, f, y, if l == Lang::Hans {
+        "提示：请先解锁并打开 Data。微信数据库解密需要对应用户数据可读；原始数据不会被删除。导出位置：内部存储/SkywardRescue。"
+    } else {
+        "Open and unlock Data first. WeChat decryption requires readable user data. Originals are not deleted. Exports go to internal storage/SkywardRescue."
+    });
+    Frame::new(t, fit(c, t, y), out, if l == Lang::Hans { "数据救援" } else { "Data rescue" }, t.m.content_top)
 }
 
 /// Root's own page: the managers installed, their modules, and the switch
@@ -506,6 +561,13 @@ pub fn settings(cx: &Ctx) -> Frame {
     y = widgets::footnote(&mut c, t, f, usb.bottom, l.pick(texts::settings::FILE_TRANSFER_NOTE));
     let note = l.pick(texts::local::WIRELESS_NOTE);
     y = widgets::footnote(&mut c, t, f, y, note);
+    y = widgets::section(&mut c, t, f, y, "密码与自动连接");
+    let remembered = widgets::list(&mut c, t, f, y, &[
+        Row::new("记住 DATA 解密/锁屏密码").icon(ORANGE, Icon::Lock).trail(Trail::Switch(s.remember_data)),
+        Row::new("进入 Recovery 自动开启 Wi-Fi 并连接已保存网络").icon(BLUE, Icon::Wlan).trail(Trail::Switch(s.auto_wlan)),
+    ]);
+    out.extend(hits(&remembered.rows, &[Action::Toggle(Switch::RememberData), Action::Toggle(Switch::AutoWlan)]));
+    y = widgets::footnote(&mut c, t, f, remembered.bottom, "关闭对应开关会清除已保存的密码和网络记录；凭据以明文保存在 /metadata/skyward/settings.json，并限制文件权限。");
     y = widgets::section(&mut c, t, f, y, l.pick(texts::settings::DEBUGGING));
     let debug = widgets::list(
         &mut c,
@@ -3097,7 +3159,41 @@ pub fn skyward_update(cx: &Ctx) -> Frame {
     let mut out = Vec::new();
     let y = widgets::section_first(&mut c, t, f, top, l.pick(texts::common::THIS_PHONE));
     let y = widgets::info_card(&mut c, t, f, y, &[(l.pick(texts::update::CURRENT_VERSION), VERSION.to_string())]);
-    let y = widgets::section(&mut c, t, f, y, l.pick(texts::update::ONLINE));
+
+    // The source is chosen explicitly and kept in settings for the next start.
+    let y = widgets::section(&mut c, t, f, y, l.pick(texts::skyward_update::DOWNLOAD_SOURCE));
+    let source_rows = [
+        Row::new("GitHub").trail(if cx.state.skyward_source == DownloadSource::Github { Trail::Choice("✓") } else { Trail::None }),
+        Row::new("ghfast.top").trail(if cx.state.skyward_source == DownloadSource::GhFast { Trail::Choice("✓") } else { Trail::None }),
+        Row::new("ghproxy.net").trail(if cx.state.skyward_source == DownloadSource::GhProxy { Trail::Choice("✓") } else { Trail::None }),
+    ];
+    let sources = widgets::list(&mut c, t, f, y, &source_rows);
+    if !cx.state.updating_skyward() {
+        out.extend(hits(&sources.rows, &[
+            Action::SkywardDownloadSource(DownloadSource::Github),
+            Action::SkywardDownloadSource(DownloadSource::GhFast),
+            Action::SkywardDownloadSource(DownloadSource::GhProxy),
+        ]));
+    }
+
+    let y = widgets::section(&mut c, t, f, sources.bottom, l.pick(texts::update::ONLINE));
+    // Keep a manual check action visible even after a previous check answered.
+    // Checking release metadata uses the existing GitHub check effect; the
+    // selected mirror is used for the package download, not release lookup.
+    let y = match &cx.state.skyward_check {
+        SkywardCheck::Asking => widgets::list(
+            &mut c, t, f, y,
+            &[Row::new(l.pick(texts::update::CHECKING)).trail(Trail::None)],
+        ).bottom,
+        _ => {
+            let check = widgets::list(
+                &mut c, t, f, y,
+                &[Row::new(l.pick(texts::update::CHECK)).trail(Trail::None)],
+            );
+            out.extend(hits(&check.rows, &[Action::CheckSkyward]));
+            check.bottom
+        }
+    };
     let y = skyward_online(&mut c, cx, y, &mut out);
     let points = [l.pick(texts::skyward_update::FROM_GITHUB), l.pick(texts::skyward_update::BOTH_SLOTS), l.pick(texts::skyward_update::REBOOT_TO_USE)];
     let y = widgets::notes(&mut c, t, f, y + t.m.card_gap, l.pick(texts::common::NOTES), &points);
@@ -3114,26 +3210,34 @@ fn skyward_online(c: &mut Canvas, cx: &Ctx, y: f32, out: &mut Vec<Hit>) -> f32 {
         SkywardCheck::Asking => return widgets::list(c, t, f, y, &[Row::new(l.pick(texts::update::CHECKING)).trail(Trail::None)]).bottom,
         SkywardCheck::Answered(n) => n,
         other => {
-            let mut row = Row::new(l.pick(texts::update::CHECK));
-            if !s.online() {
-                row = row.subtitle(l.pick(texts::update::WLAN_FIRST));
-            }
-            let check = widgets::list(c, t, f, y, &[row]);
-            out.extend(hits(&check.rows, &[Action::CheckSkyward]));
             return match other {
-                SkywardCheck::Failed(why) => widgets::footnote(c, t, f, check.bottom, &fmt::unanswered(l, why)),
-                _ => check.bottom,
+                SkywardCheck::Failed(why) => widgets::footnote(c, t, f, y, &fmt::unanswered(l, why)),
+                _ if !s.online() => widgets::footnote(c, t, f, y, l.pick(texts::update::WLAN_FIRST)),
+                _ => y,
             };
         }
     };
     let version = &newest.version;
-    let (title, detail) = match (newest.newer, &newest.build) {
-        (true, Some(build)) => (texts::update::new_version_named(l, version), texts::skyward_update::package(l, fmt::file_size(build.size))),
-        (true, None) => (texts::update::new_version_named(l, version), l.pick(texts::skyward_update::NO_PACKAGE).to_string()),
-        (false, _) => (l.pick(texts::update::UP_TO_DATE).to_string(), texts::skyward_update::newest_is(l, version)),
-    };
+    let (title, detail) = match (newest.newer, newest.repair, &newest.build) {
+    (true, _, Some(build)) => (
+        texts::update::new_version_named(l, version),
+        texts::skyward_update::package(l, fmt::file_size(build.size)),
+    ),
+    (true, _, None) => (
+        texts::update::new_version_named(l, version),
+        l.pick(texts::skyward_update::NO_PACKAGE).to_string(),
+    ),
+    (false, true, Some(build)) => (
+        l.pick(texts::update::UP_TO_DATE).to_string(),
+        texts::skyward_update::package(l, fmt::file_size(build.size)),
+    ),
+    _ => (
+        l.pick(texts::update::UP_TO_DATE).to_string(),
+        texts::skyward_update::newest_is(l, version),
+    ),
+};
     let y = widgets::list(c, t, f, y, &[Row::new(&title).icon(GREEN, Icon::Install).subtitle(&detail).trail(Trail::None)]).bottom;
-    if !newest.newer || newest.build.is_none() {
+    if (!newest.newer && !newest.repair) || newest.build.is_none() {
         return y;
     }
     match &s.skyward_job {
@@ -3188,7 +3292,12 @@ fn skyward_online(c: &mut Canvas, cx: &Ctx, y: f32, out: &mut Vec<Hit>) -> f32 {
                 Some(SkywardEnd::Updated(_)) => unreachable!("an update that went in shows how it did"),
                 None => {}
             }
-            let mut row = Row::new(l.pick(texts::skyward_update::DOWNLOAD_AND_UPDATE));
+            let label = if newest.repair {
+    texts::skyward_update::REPAIR_DOWNLOAD
+} else {
+    texts::skyward_update::DOWNLOAD_AND_UPDATE
+};
+let mut row = Row::new(l.pick(label));
             if !s.online() {
                 row = row.subtitle(l.pick(texts::update::WLAN_FIRST));
             }
@@ -3241,6 +3350,27 @@ pub fn wlan(cx: &Ctx) -> Frame {
                 {
                     y = widgets::footnote(&mut c, t, f, y, &note);
                 }
+            }
+            // Show saved credentials only while their networks are present in
+            // the latest scan. As soon as one is selected, it moves to the
+            // joined row (including while the connection is still in progress).
+            let selected_ssid = w.joined.as_ref().map(|joined| joined.ssid.as_slice());
+            let saved: Vec<_> = s.saved_wlan.iter().enumerate()
+                .filter(|(_, saved)| {
+                    selected_ssid != Some(saved.ssid.as_slice())
+                        && w.networks.iter().any(|found| found.ssid == saved.ssid)
+                })
+                .collect();
+            if !saved.is_empty() {
+                let saved_title = if l == Lang::Hans { "已保存的 WLAN" } else { "Saved WLANs" };
+                y = widgets::section(&mut c, t, f, y, saved_title);
+                let rows: Vec<Row> = saved.iter()
+                    .map(|(_, saved)| Row::new(&saved.name).trail(Trail::Network { locked: saved.security.password() }))
+                    .collect();
+                let list = widgets::list(&mut c, t, f, y, &rows);
+                let picks: Vec<Action> = saved.iter().map(|(index, _)| Action::JoinSavedNetwork(*index)).collect();
+                out.extend(hits(&list.rows, &picks));
+                y = list.bottom + t.m.card_gap;
             }
             let others: Vec<(usize, &Network)> =
                 w.networks.iter().enumerate().filter(|(_, n)| w.joined.as_ref().is_none_or(|j| j.ssid != n.ssid)).collect();
