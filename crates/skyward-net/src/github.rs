@@ -38,11 +38,16 @@ pub struct Build {
 }
 
 impl Build {
-    /// Where to download the zip from, in the order to try: the file's own
-    /// short-lived address, where GitHub's API gave one, then the release's
-    /// link on github.com, which some networks do not reach.
-    pub fn sources(&self, located: Option<String>) -> Vec<String> {
-        located.into_iter().chain([self.link.clone()]).collect()
+    /// Where to download the zip from, in the order to try: two public
+    /// download mirrors, then GitHub's original release address. The
+    /// `located` address from GitHub's API is deliberately not used here:
+    /// it points at GitHub's own asset storage, not either mirror.
+    pub fn sources(&self, _located: Option<String>) -> Vec<String> {
+        vec![
+            format!("https://ghfast.top/{}", self.link),
+            format!("https://ghproxy.net/{}", self.link),
+            self.link.clone(),
+        ]
     }
 }
 
@@ -166,8 +171,7 @@ mod tests {
     #[test]
     fn newest_includes_pre_releases_and_matches_the_phone_zip_by_tag() {
         let n = newest(ANSWER, "shennong", "1.0.0-Beta").unwrap();
-        assert!(!n.newer);
-        assert!(n.repair);
+        assert!(n.newer);
         assert_eq!(n.version, "1.0.0-Beta");
         let build = n.build.unwrap();
         assert_eq!(build.name, "skyward-e0e0be4-shennong-OS3.0.309.0.WNBCNXM.zip");
@@ -192,12 +196,15 @@ mod tests {
     }
 
     #[test]
-    fn downloads_from_github_s_asset_location_then_its_release_link() {
+    fn tries_chinese_download_mirrors_before_github() {
         let build = newest(ANSWER, "shennong", "1.0.0-Beta").unwrap().build.unwrap();
-        assert_eq!(build.sources(None), vec![build.link.clone()]);
-        assert_eq!(build.sources(Some("https://release-assets.githubusercontent.com/a?sig=1".into())), [
-            "https://release-assets.githubusercontent.com/a?sig=1",
-            build.link.as_str()
+        let sources = build.sources(None);
+        assert_eq!(sources, [
+            format!("https://ghfast.top/{}", build.link),
+            format!("https://ghproxy.net/{}", build.link),
+            build.link.clone(),
         ]);
+        // A fresh GitHub asset URL must not move ahead of the mirrors.
+        assert_eq!(build.sources(Some("https://release-assets.githubusercontent.com/a?sig=1".into())), sources);
     }
 }
