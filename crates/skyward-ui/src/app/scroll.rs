@@ -325,6 +325,7 @@ mod tests {
             design: Some(5_500_000),
             full: Some(5_095_000),
             voltage: Some(4_200_000),
+            current: Some(-450_000),
             quick: false,
             plugged: false,
         };
