@@ -1217,6 +1217,14 @@ pub fn about(cx: &Ctx) -> Frame {
         author: widgets::author_line(t, f, AUTHOR),
         runs: canvas.runs(),
     };
+    // The whole blue hero above the first device card is a shortcut to
+    // Skyward's own updater, not just the wordmark and version text. The
+    // system back control is handled before page hits, and the device cards
+    // begin at `summary_top`, so neither is swallowed by this hit area.
+    out.push(Hit {
+        rect: Rect::new(0.0, 0.0, m.w as f32, summary_top),
+        action: Action::Open(Screen::SkywardUpdate),
+    });
     Frame { header: false, hero: Some(art), ..Frame::new(t, canvas, out, cx.state.lang.pick(texts::page::ABOUT), summary_top) }
 }
 
@@ -3350,10 +3358,7 @@ pub fn wlan(cx: &Ctx) -> Frame {
             // the network is shown only in the joined row (also while joining).
             let selected_ssid = w.joined.as_ref().map(|joined| joined.ssid.as_slice());
             let saved: Vec<_> = s.saved_wlan.iter().enumerate()
-                .filter(|(_, saved)| {
-        selected_ssid != Some(saved.ssid.as_slice())
-            && w.networks.iter().any(|n| n.ssid.as_slice() == saved.ssid.as_slice())
-    })
+                .filter(|(_, saved)| selected_ssid != Some(saved.ssid.as_slice()))
                 .collect();
             let saved_ssids: Vec<&[u8]> = s.saved_wlan.iter()
                 .map(|saved| saved.ssid.as_slice())
@@ -3372,7 +3377,7 @@ pub fn wlan(cx: &Ctx) -> Frame {
             let others: Vec<(usize, &Network)> = w.networks.iter().enumerate()
                 .filter(|(_, n)| {
                     w.joined.as_ref().is_none_or(|j| j.ssid != n.ssid)
-                        && !saved_ssids.contains(&n.ssid.as_slice())
+                        && !saved_ssids.iter().any(|ssid| *ssid == n.ssid.as_slice())
                 })
                 .collect();
             let (below, rescan) = widgets::section_action(&mut c, t, f, y, l.pick(texts::wlan::NEARBY), l.pick(texts::wlan::REFRESH));
