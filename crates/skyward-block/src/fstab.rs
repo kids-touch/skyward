@@ -4,7 +4,13 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
-/// Where the phone's own partitions keep the table.
+/// The device-specific table carried by the recovery ramdisk. When present,
+/// it is authoritative: it lets recovery mount partitions even when vendor
+/// and odm cannot be mounted yet.
+pub const RECOVERY_FILE: &str = "/etc/recovery/fstab.qcom";
+
+/// Where the installed system keeps its own table when the recovery carries
+/// no device-specific copy.
 pub const FILES: [&str; 2] = ["/vendor/etc/fstab.qcom", "/odm/etc/fstab.qcom"];
 
 /// One filesystem the phone knows about.
@@ -53,6 +59,15 @@ pub fn entries(text: &str) -> Vec<Entry> {
 
 /// Every entry of the phone's own table, read from wherever the table is.
 fn table() -> Result<Vec<Entry>> {
+    // Prefer the copy packed into this recovery. Do not merge it with the
+    // installed system's copies: duplicate entries can describe different
+    // device states, and the ramdisk copy is the one intended for recovery.
+    match std::fs::read_to_string(RECOVERY_FILE) {
+        Ok(text) => return Ok(entries(&text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e).with_context(|| format!("read {RECOVERY_FILE}")),
+    }
+
     let mut out = Vec::new();
     for file in FILES {
         let text = match std::fs::read_to_string(file) {
