@@ -90,15 +90,21 @@ mod tests {
     fn a_home_page_grown_by_an_update_notice_scrolls_down_to_its_last_row() {
         let f = fonts();
         let plain = info();
-        let mut app = App::new(Screen::Home, W, SNUG, PPD);
+        // Pick the screen height at the plain page's last row, rather than
+        // assuming a fixed pixel height still fits after the layout changes.
+        let mut app = App::new(Screen::Home, W, H, PPD);
         let fr = app.frame(&f, &plain);
         let reboot = fr.hits.iter().find(|h| h.action == Action::Open(Screen::Reboot)).expect("a reboot row").rect;
-        assert!(reboot.y + reboot.h <= SNUG as f32, "without the notice the rows fit the screen");
+        let snug = (reboot.y + reboot.h).ceil() as u32;
+        let mut app = App::new(Screen::Home, W, snug, PPD);
+        let fr = app.frame(&f, &plain);
+        let reboot = fr.hits.iter().find(|h| h.action == Action::Open(Screen::Reboot)).expect("a reboot row").rect;
+        assert!(reboot.y + reboot.h <= snug as f32, "without the notice the rows fit the screen");
         let i = DeviceInfo { snapshot: SnapshotState::Snapshotted, ..info() };
-        let mut app = App::new(Screen::Home, W, SNUG, PPD);
+        let mut app = App::new(Screen::Home, W, snug, PPD);
         let fr = app.frame(&f, &i);
         let reboot = fr.hits.iter().find(|h| h.action == Action::Open(Screen::Reboot)).expect("a reboot row").rect;
-        assert!(reboot.y + reboot.h > SNUG as f32, "the notice pushes the last row below the screen");
+        assert!(reboot.y + reboot.h > snug as f32, "the notice pushes the last row below the screen");
         assert!(reboot.y + reboot.h <= fr.canvas.h as f32, "the page is drawn down to it");
         app.touch(Touch::Down(700.0, 2800.0), &f, 0);
         app.touch(Touch::Move(700.0, 2000.0), &f, 0);
@@ -108,7 +114,7 @@ mod tests {
             app.tick(ms);
         }
         let (_, y) = spot(&mut app, &f, &i, Action::Open(Screen::Reboot));
-        assert!(y < SNUG as f32, "scrolled up into view");
+        assert!(y < snug as f32, "scrolled up into view");
         tap_at(&mut app, &f, &i, Action::Open(Screen::Reboot), 3000);
         assert_eq!(app.screen(), Screen::Reboot);
     }
