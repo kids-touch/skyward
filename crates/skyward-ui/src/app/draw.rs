@@ -675,13 +675,6 @@ impl App {
             self.refresh();
         }
     }
-    /// The browser's last navigation ended.
-    pub fn set_browser_page(&mut self, page: Result<skyward_net::browser::BrowserPage, String>) {
-        self.state.browser_loading = false;
-        self.state.browser_page = Some(page);
-        self.refresh();
-    }
-
 
     /// Show the user what the runtime has to say about work it was asked
     /// to do.

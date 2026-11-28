@@ -36,8 +36,6 @@ pub struct Adding {
 /// A text field of the page that adds a network.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Field {
-    /// URL field of the built-in browser.
-    BrowserUrl,
     Name,
     Password,
 }

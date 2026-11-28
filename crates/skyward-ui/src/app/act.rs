@@ -724,37 +724,9 @@ impl App {
                 self.state.layer = Layer::Letters;
                 self.open(Screen::WlanAdd);
             }
-            Action::TypeInto(Field::BrowserUrl) => {
-                self.state.layer = Layer::Letters;
-                self.refresh();
-            }
             Action::TypeInto(field) => {
                 let a = self.state.adding.as_mut().expect("the fields are on the page that adds a network");
                 if a.field != field { a.field = field; self.refresh(); }
-            }
-            Action::GoBrowser => {
-                return self.browse_address(now, true);
-            }
-            Action::BrowserBack => {
-                if self.state.browser_history_at > 0 {
-                    self.state.browser_history_at -= 1;
-                    self.state.browser_url = self.state.browser_history[self.state.browser_history_at].clone();
-                    return self.browse_address(now, false);
-                }
-            }
-            Action::BrowserForward => {
-                if self.state.browser_history_at + 1 < self.state.browser_history.len() {
-                    self.state.browser_history_at += 1;
-                    self.state.browser_url = self.state.browser_history[self.state.browser_history_at].clone();
-                    return self.browse_address(now, false);
-                }
-            }
-            Action::BrowserRefresh => return self.browse_address(now, false),
-            Action::BrowserLink(at) => {
-                let Some(Ok(page)) = self.state.browser_page.as_ref() else { return Vec::new() };
-                let Some(link) = page.links.get(at) else { return Vec::new() };
-                self.state.browser_url = link.url.clone();
-                return self.browse_address(now, true);
             }
             Action::ChooseSecurity => {
                 self.state.adding.as_mut().expect("the protection is on the page that adds a network").choosing = true;
@@ -971,26 +943,6 @@ impl App {
         vec![Effect::Mkdir { path: self.state.files.path.clone(), name }]
     }
 
-    fn browse_address(&mut self, now: u64, record: bool) -> Vec<Effect> {
-        let address = self.state.browser_url.trim().to_owned();
-        if address.is_empty() { self.say("Enter a web address", now); return Vec::new(); }
-        if record && self.state.browser_history.last() != Some(&address) {
-            if !self.state.browser_history.is_empty() {
-                self.state.browser_history.truncate(self.state.browser_history_at + 1);
-            }
-            self.state.browser_history.push(address.clone());
-            self.state.browser_history_at = self.state.browser_history.len() - 1;
-            if self.state.browser_history.len() > 32 {
-                self.state.browser_history.remove(0);
-                self.state.browser_history_at = self.state.browser_history_at.saturating_sub(1);
-            }
-        }
-        self.state.browser_page = None;
-        self.state.browser_loading = true;
-        self.refresh();
-        vec![Effect::Browse(address)]
-    }
-
     /// The text the keyboard types into on this page.
     fn typing(&mut self) -> &mut String {
         if self.state.new_folder {
@@ -1008,10 +960,8 @@ impl App {
                 match a.field {
                     Field::Name => &mut a.name,
                     Field::Password => &mut self.state.password,
-                    Field::BrowserUrl => unreachable!(),
                 }
             }
-            Screen::Browser => &mut self.state.browser_url,
             s => panic!("{s:?} has no text field"),
         }
     }
@@ -1072,10 +1022,6 @@ impl App {
             Cap::Show(layer) => self.state.layer = layer,
             Cap::Hide => self.slide_keys(true, now),
             Cap::Enter => match self.screen() {
-                Screen::Browser => {
-                    let address = self.state.browser_url.trim().to_owned();
-                    if !address.is_empty() { return self.browse_address(now, true); }
-                }
                 Screen::Search => {
                     if let Some(first) = search::find_on(&self.state.search, l, |screen| self.state.offers(screen)).first() {
                         return self.act(Action::Open(first.screen), now);
