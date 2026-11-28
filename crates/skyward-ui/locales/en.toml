@@ -674,6 +674,7 @@ no_second_system = "No second system"
 
 # What the settings page says beside its Skyward update entry.
 [skyward_update]
+repair_download = "Download Latest REC Repair"
 updating = "Updating"
 updated = "Updated"
 package = "Package {size}"
