@@ -166,7 +166,8 @@ mod tests {
     #[test]
     fn newest_includes_pre_releases_and_matches_the_phone_zip_by_tag() {
         let n = newest(ANSWER, "shennong", "1.0.0-Beta").unwrap();
-        assert!(n.newer);
+        assert!(!n.newer);
+        assert!(n.repair);
         assert_eq!(n.version, "1.0.0-Beta");
         let build = n.build.unwrap();
         assert_eq!(build.name, "skyward-e0e0be4-shennong-OS3.0.309.0.WNBCNXM.zip");
