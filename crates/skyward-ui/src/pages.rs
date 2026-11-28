@@ -291,6 +291,7 @@ pub fn home(cx: &Ctx) -> Frame {
         Row::new(l.pick(texts::page::BACKUP)).icon(BLUE, Icon::Backup),
         Row::new(l.pick(texts::page::RESTORE)).icon(PURPLE, Icon::Restore),
         Row::new(l.pick(texts::page::MOUNT)).icon(SLATE, Icon::Mount),
+        Row::new(l.among("浏览器", "瀏覽器", "Browser")).icon(SLATE, Icon::Globe),
         Row::new(l.pick(texts::page::DECRYPT)).icon(BLUE, Icon::Lock).trail(Trail::Value(fmt::data(l, &cx.state.data))),
         Row::new(if l == Lang::Hans { "数据救援" } else { "Data rescue" }).icon(ORANGE, Icon::Restore),
     ]);
@@ -299,6 +300,7 @@ pub fn home(cx: &Ctx) -> Frame {
         Action::Open(Screen::Backup),
         Action::Open(Screen::Restore),
         Action::Open(Screen::Mount),
+        Action::Open(Screen::Browser),
         Action::Open(Screen::Decrypt),
         Action::Open(Screen::Rescue),
     ]));
@@ -2702,7 +2704,7 @@ pub fn advanced(cx: &Ctx) -> Frame {
     let top = t.m.content_top;
     let tools = widgets::list(&mut c, t, f, top, &[
         Row::new(l.pick(texts::page::FILES)).icon(BLUE, Icon::Folder),
-        Row::new("Browser").icon(SLATE, Icon::Globe),
+        Row::new(l.among("浏览器", "瀏覽器", "Browser")).icon(SLATE, Icon::Globe),
         Row::new(l.pick(texts::page::TERMINAL)).icon(SLATE, Icon::Terminal),
         Row::new(l.pick(texts::page::RELABEL)).icon(PURPLE, Icon::Shield),
         Row::new(l.pick(texts::page::FILESYSTEMS)).icon(RED, Icon::Mount),
@@ -2731,33 +2733,37 @@ pub fn browser(cx: &Ctx) -> Frame {
     let mut c = long_page(cx);
     let mut out = Vec::new();
     let top = t.m.content_top;
-    let y = widgets::section_first(&mut c, t, f, top, l.pick(same("Address")));
+    let y = widgets::section_first(&mut c, t, f, top, l.among("网址", "網址", "Address"));
     let (below, caret) = widgets::text_field(&mut c, t, f, y, &s.browser_url);
     let field = Rect::new(t.m.margin, y, t.m.w as f32 - t.m.margin * 2.0, t.m.dp(56.0));
     out.push(Hit { rect: field, action: Action::TypeInto(Field::BrowserUrl) });
     let navigation = [
-        Row::new(l.pick(same("Back"))).trail(if s.browser_history_at > 0 { Trail::Arrow } else { Trail::None }),
-        Row::new(l.pick(same("Forward"))).trail(if s.browser_history_at + 1 < s.browser_history.len() { Trail::Arrow } else { Trail::None }),
-        Row::new(l.pick(same("Refresh"))).trail(Trail::Arrow),
-        Row::new(l.pick(same("Open page"))).trail(Trail::Arrow),
+        Row::new(l.among("后退", "後退", "Back")).trail(if s.browser_history_at > 0 { Trail::Arrow } else { Trail::None }),
+        Row::new(l.among("前进", "前進", "Forward")).trail(if s.browser_history_at + 1 < s.browser_history.len() { Trail::Arrow } else { Trail::None }),
+        Row::new(l.among("刷新", "重新整理", "Refresh")).trail(Trail::Arrow),
+        Row::new(l.among("打开网页", "開啟網頁", "Open page")).trail(Trail::Arrow),
     ];
     let nav = widgets::list(&mut c, t, f, below + t.m.card_gap, &navigation);
     out.extend(hits(&nav.rows, &[Action::BrowserBack, Action::BrowserForward, Action::BrowserRefresh, Action::GoBrowser]));
     let mut bottom = nav.bottom;
     if s.browser_loading {
-        bottom = widgets::footnote(&mut c, t, f, bottom + t.m.card_gap, l.pick(same("Loading page…")));
+        bottom = widgets::footnote(&mut c, t, f, bottom + t.m.card_gap, l.among("正在加载网页…", "正在載入網頁…", "Loading page…"));
     }
     if let Some(result) = &s.browser_page {
         bottom += t.m.card_gap;
         match result {
             Err(why) => {
-                bottom = widgets::footnote(&mut c, t, f, bottom, &format!("Page load failed: {why}"));
+                bottom = widgets::footnote(&mut c, t, f, bottom, &l.among(
+                    format!("网页加载失败：{why}"),
+                    format!("網頁載入失敗：{why}"),
+                    format!("Page load failed: {why}"),
+                ));
             }
             Ok(page) => {
                 bottom = widgets::section(&mut c, t, f, bottom, if page.title.is_empty() { &page.url } else { &page.title });
                 if !page.text.is_empty() { bottom = widgets::paragraph(&mut c, t, f, bottom, &page.text); }
                 if !page.images.is_empty() {
-                    bottom = widgets::section(&mut c, t, f, bottom + t.m.card_gap, l.pick(same("Images")));
+                    bottom = widgets::section(&mut c, t, f, bottom + t.m.card_gap, l.among("图片", "圖片", "Images"));
                     for image in &page.images {
                         let label = if image.alt.is_empty() { image.url.as_str() } else { image.alt.as_str() };
                         bottom = widgets::footnote(&mut c, t, f, bottom, label);
@@ -2770,12 +2776,16 @@ pub fn browser(cx: &Ctx) -> Frame {
                         if let Some(height) = height {
                             bottom = image_top + height + t.m.dp(12.0);
                         } else {
-                            bottom = widgets::footnote(&mut c, t, f, bottom, l.pick(same("This image format could not be displayed")));
+                            bottom = widgets::footnote(&mut c, t, f, bottom, l.among(
+                                "无法显示此图片格式",
+                                "無法顯示此圖片格式",
+                                "This image format could not be displayed",
+                            ));
                         }
                     }
                 }
                 if !page.links.is_empty() {
-                    bottom = widgets::section(&mut c, t, f, bottom + t.m.card_gap, l.pick(same("Links")));
+                    bottom = widgets::section(&mut c, t, f, bottom + t.m.card_gap, l.among("链接", "連結", "Links"));
                     let rows: Vec<Row> = page.links.iter().map(|link| Row::new(&link.label).subtitle(&link.url)).collect();
                     let list = widgets::list(&mut c, t, f, bottom, &rows);
                     out.extend(hits(&list.rows, &(0..page.links.len()).map(Action::BrowserLink).collect::<Vec<_>>()));
@@ -2784,8 +2794,8 @@ pub fn browser(cx: &Ctx) -> Frame {
             }
         }
     }
-    keyboard_hits(&mut c, t, f, s, l.pick(same("Open page")), &mut out);
-    Frame { caret: Some(caret), ..Frame::new(t, fit(c, t, bottom + t.m.margin), out, "Browser", top) }
+    keyboard_hits(&mut c, t, f, s, l.among("打开网页", "開啟網頁", "Open page"), &mut out);
+    Frame { caret: Some(caret), ..Frame::new(t, fit(c, t, bottom + t.m.margin), out, l.among("浏览器", "瀏覽器", "Browser"), top) }
 }
 
 /// Decode and draw a bounded PNG image, keeping its aspect ratio.
