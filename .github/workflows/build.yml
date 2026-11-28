@@ -159,9 +159,13 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = tag ]; then version="$GITHUB_REF_NAME"; else version="${GITHUB_SHA::7}"; fi
           name="skyward-$version-$DEVICE-$STOCK"
           mkdir out
+          extra_args=()
+          if [ "$DEVICE" = shennong ]; then
+            extra_args+=(--extra "devices/$DEVICE/ramdisk")
+          fi
           tools/skyward-pack recovery --stock stock/recovery.img --binary tools/skyward --system-init tools/system-init \
             --config "devices/$DEVICE.toml" --font resources/fonts/MiSansVF.ttf --mono resources/fonts/KirkMono-Regular.ttf \
-            --mono-license resources/fonts/KirkMono-OFL.txt --out "out/$name.img"
+            --mono-license resources/fonts/KirkMono-OFL.txt "${extra_args[@]}" --out "out/$name.img"
           echo "name=$name" >> "$GITHUB_OUTPUT"
       - name: Zip the image
         working-directory: out
