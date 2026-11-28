@@ -12,6 +12,8 @@ pub struct State {
     /// start, where otherwise it is the one the system names.
     pub language_chosen: bool,
     pub dark: bool,
+    /// Which half of the horizontally swipeable home status card is shown.
+    pub home_status_page: usize,
     pub brightness: f32,
     /// How long the screen stays on with nothing touched, by its place in
     /// [`SCREEN_OFF`].
@@ -284,6 +286,7 @@ impl Default for State {
             lang: Lang::Hans,
             language_chosen: false,
             dark: false,
+            home_status_page: 0,
             brightness: SLIDER_START,
             // Two minutes.
             screen_off: 3,

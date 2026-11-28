@@ -807,6 +807,8 @@ enum Drag {
     /// counts until it lifts.
     Held,
     Scroll { last: f32 },
+    /// A horizontal swipe across the home status card.
+    StatusSwipe { start_x: f32, start_y: f32, changed: bool },
     /// Swiping in from a screen edge, the finger now `x` across; the cue
     /// keeps to height `cy`, set by where the swipe began. Past the
     /// threshold, lifting goes back.

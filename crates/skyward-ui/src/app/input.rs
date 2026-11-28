@@ -93,6 +93,14 @@ impl App {
                     self.drag = Drag::Modal { action };
                     return fx;
                 }
+                // The home status card owns horizontal gestures, while a
+                // vertical gesture still scrolls the whole page as usual.
+                if self.screen() == Screen::Home
+                    && self.frame.as_ref().and_then(|fr| fr.horizontal_scroll).is_some_and(|r| r.contains(x, y + scroll))
+                {
+                    self.drag = Drag::StatusSwipe { start_x: x, start_y: y, changed: false };
+                    return fx;
+                }
                 // The first page has nothing to go back to: its edges are
                 // like the rest of it.
                 let at_edge = side.filter(|_| self.stack.len() > 1);
@@ -230,6 +238,19 @@ impl App {
                     self.drag_by(last - y);
                     self.drag = Drag::Scroll { last: y };
                 }
+                Drag::StatusSwipe { start_x, start_y, changed } => {
+                    let (dx, dy) = (x - start_x, y - start_y);
+                    if !changed && dy.abs() > slop && dy.abs() > dx.abs() {
+                        self.drag_by(start_y - y);
+                        self.drag = Drag::Scroll { last: y };
+                    } else if !changed && dx.abs() > slop && dx.abs() > dy.abs() {
+                        self.state.home_status_page = if dx < 0.0 { 1 } else { 0 };
+                        self.dirty = true;
+                        self.drag = Drag::StatusSwipe { start_x, start_y, changed: true };
+                    } else {
+                        self.drag = Drag::StatusSwipe { start_x, start_y, changed };
+                    }
+                }
                 Drag::Edge { start, from_left, armed, cy, .. } => {
                     let travel = if from_left { x - start } else { start - x };
                     let ready = travel > m.dp(BACK_SWIPE_DP);
@@ -269,6 +290,7 @@ impl App {
                 Drag::Idle => {}
             },
             Touch::Up => match std::mem::replace(&mut self.drag, Drag::Idle) {
+                Drag::StatusSwipe { .. } => {}
                 Drag::Press { action: Some(a), .. } => {
                     if let Some(p) = &mut self.row_press {
                         p.lift(now);

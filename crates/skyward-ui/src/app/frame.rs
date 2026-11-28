@@ -41,6 +41,8 @@ pub struct Frame {
     /// rows: a drag on it scrolls through what it holds, rather than moving
     /// the page.
     pub scrollback: Option<(Rect, f32)>,
+    /// A horizontally swipeable region on the page, in page coordinates.
+    pub horizontal_scroll: Option<Rect>,
     /// A strip held at the bottom of the screen over the page; the page
     /// scrolls far enough for nothing to stay under it.
     pub dock: Option<Dock>,
@@ -223,6 +225,7 @@ impl Frame {
             pinned: None,
             fold: None,
             scrollback: None,
+            horizontal_scroll: None,
             dock: None,
             keyboard: None,
             dialog: None,
