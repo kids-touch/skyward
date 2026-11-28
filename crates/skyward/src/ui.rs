@@ -1022,6 +1022,27 @@ fn read_folder(path: &Path) -> Result<Vec<FileRow>> {
     Ok(rows)
 }
 
+/// Re-map and mount the active slot's logical partitions after an install
+/// has released them for writing. Failure is logged rather than turning a
+/// successful flash into a reported flash failure; the mount page can still
+/// be used to retry individual partitions.
+fn restore_slot_mounts(when: &str) {
+    let result = (|| -> Result<()> {
+        let slot = skyward_vab::current_slot()?.context("the phone has no active A/B slot")?;
+        let mounts = skyward_vab::mount_partitions(slot)?;
+        skyward_sys::kmsg(&format!(
+            "install: restored {} logical partition mounts {when}",
+            mounts.partitions.len()
+        ))?;
+        Ok(())
+    })();
+    if let Err(e) = result {
+        let _ = skyward_sys::kmsg(&format!(
+            "install: could not restore logical partition mounts {when}: {e:#}"
+        ));
+    }
+}
+
 /// The slot's logical partitions and how each shows now, for the mount page.
 /// A mounted partition is in use when a program holds it, or when one of
 /// `services` this phone's build of the hardware runs is run from it: those
@@ -1349,6 +1370,9 @@ struct Pages<'a> {
     /// the kernel took up again as the snapshots were mapped, or one started
     /// on the update page.
     merger: Option<merge::Merger>,
+    /// Logical partitions released before an install, to be mounted again
+    /// once an update merge no longer needs them unmapped.
+    remount_after_merge: bool,
     /// The second system's work, on a phone that can hold one.
     systems_worker: Option<systems::Worker>,
     /// A switch the system asked for, under way; then the phone starts the
@@ -1613,6 +1637,7 @@ impl<'a> Pages<'a> {
             rescue_worker: None,
             rescue_found: Vec::new(),
             merger: None,
+            remount_after_merge: false,
             systems_worker,
             switch_asked: false,
             switched: false,
@@ -2433,6 +2458,7 @@ impl Pages<'_> {
                     _ => (false, script_cache),
                 };
                 let leave_wanted = leaves;
+                let mut merge_started = false;
                 let auto_root = match auto_slots.split_first() {
                     Some((first, rest)) => {
                         let started = self.start_auto_root(*first, now)?;
@@ -2472,6 +2498,7 @@ impl Pages<'_> {
                             self.merger = Some(merger);
                             self.app.set_update(Standing::Merging(0.0));
                             self.merge_leaves = leave_wanted;
+                            merge_started = true;
                             leaves = false;
                         }
                         Err(e) => {
@@ -2483,6 +2510,11 @@ impl Pages<'_> {
                             leaves = false;
                         }
                     }
+                }
+                if merge_started {
+                    self.remount_after_merge = true;
+                } else if !wipe_after {
+                    restore_slot_mounts("after install");
                 }
                 if wipe_after {
                     ensure!(self.eraser.is_none(), "erasing is under way already");
@@ -2572,6 +2604,10 @@ impl Pages<'_> {
         if erased {
             self.eraser = None;
             self.keeper.remade();
+            // A package may ask for a factory reset immediately after its
+            // partitions were written. Restore the logical mounts only after
+            // that erase has finished, never in the middle of the wipe.
+            restore_slot_mounts("after erase");
             if leaves {
                 self.erase_leaves = false;
                 self.leave_when_ready(now);
@@ -2759,6 +2795,9 @@ impl Pages<'_> {
         // stands now.
         if m.ended() {
             self.merger = None;
+            if std::mem::take(&mut self.remount_after_merge) {
+                restore_slot_mounts("after update merge");
+            }
             self.read_at = Instant::now();
             read_details(self.cfg, &mut self.info, &mut self.unread.details)?;
             self.app.refresh();
