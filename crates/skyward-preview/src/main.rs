@@ -1743,6 +1743,7 @@ fn nezha(cfg: &DeviceConfig) -> DeviceInfo {
             design: Some(6_800_000),
             full: Some(6_543_000),
             voltage: Some(4_442_000),
+            current: Some(2_500_000),
             // The recovery has no fast charging handshake with the charger.
             quick: false,
             plugged: true,
