@@ -19,7 +19,7 @@ use crate::texts;
 use crate::theme::Theme;
 use crate::icons::{self, Icon};
 use crate::widgets::{self, Caption, Detail, Fact, Outline, Row, Spec, SystemCard, SystemMark, Tone, Trail};
-use skyward_info::{DeviceInfo, VERSION};
+use skyward_info::{Charge, DeviceInfo, VERSION};
 use skyward_install::{Outcome, Place as FlashPlace, Reflash, Refusal, Stage};
 use skyward_net::download::Progress;
 use skyward_net::github::DownloadSource;
@@ -209,6 +209,48 @@ fn hits(rects: &[Rect], actions: &[Action]) -> Vec<Hit> {
     rects.iter().zip(actions).map(|(&rect, &action)| Hit { rect, action }).collect()
 }
 
+/// The compact five-part status card immediately below the device card.
+fn home_status_card(c: &mut Canvas, t: &Theme, f: &Fonts, top: f32, i: &DeviceInfo, data: &Data, lang: Lang) -> f32 {
+    let m = &t.m;
+    let x = m.margin;
+    let w = m.w as f32 - m.margin * 2.0;
+    let h = m.dp(76.0);
+    c.fill_round_rect(x, top, w, h, m.card_radius, t.pal.card);
+
+    let slot = i.slot.map(|s| s.letter()).unwrap_or("—").to_string();
+    let data_value = fmt::data(lang, data).to_string();
+    let free = i.storage.free.map(fmt::bytes).unwrap_or_else(|| "—".into());
+    let battery = i.battery.as_ref().map(|b| format!("{}%", b.level)).unwrap_or_else(|| "—".into());
+    let power = i.battery.as_ref().and_then(|b| {
+        let (voltage, current) = (b.voltage?, b.current?);
+        match b.charge {
+            Charge::Charging | Charge::Discharging => {
+                let watts = voltage as f64 * current.unsigned_abs() as f64 / 1_000_000_000_000.0;
+                Some(format!("{} {:.1}W", if lang == Lang::Hans { if b.charge == Charge::Charging { "充电" } else { "放电" } } else if b.charge == Charge::Charging { "In" } else { "Out" }, watts))
+            }
+            _ => None,
+        }
+    }).unwrap_or_else(|| "—".into());
+
+
+    let labels = if lang == Lang::Hans {
+        ["当前槽位", "data 分区", "可用空间", "电池电量", "充放电功率"]
+    } else {
+        ["Active slot", "Data partition", "Free space", "Battery", "Power"]
+    };
+    let values = [slot, data_value, free, battery, power];
+    let value_px = m.dp(14.0);
+    let label_px = m.dp(11.0);
+    for index in 0..5 {
+        let left = x + w * index as f32 / 5.0;
+        let cell_w = w / 5.0;
+        let cx = left + cell_w / 2.0;
+        c.text_vc(&f.heading, &values[index], cx, top + h * 0.37, value_px, t.pal.text, Some(cell_w - m.dp(5.0)));
+        c.text_vc(&f.body, labels[index], cx, top + h * 0.73, label_px, t.pal.subtitle, Some(cell_w - m.dp(5.0)));
+    }
+    top + h
+}
+
 /// Recovery home, laid out like the Settings root: title, search, a device
 /// card, then grouped entries. The status bar carries the readings: the
 /// slot, the data partition's lock and the battery's temperature.
@@ -262,6 +304,8 @@ pub fn home(cx: &Ctx) -> Frame {
     out.push(Hit { rect: card.rows[0], action: Action::Open(Screen::About) });
     out.extend(card.rows[1..].iter().zip(&opens).filter_map(|(&rect, open)| open.map(|action| Hit { rect, action })));
     y = card.bottom + t.m.card_gap;
+    let status_bottom = home_status_card(&mut c, t, f, y, i, &cx.state.data, l);
+    y = status_bottom + t.m.card_gap;
     // On a phone whose WLAN the recovery brings up, the WLAN comes first
     // under the device, as on the stock settings home; with it, where the
     // phone can hold a second system, the two systems.
