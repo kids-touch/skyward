@@ -265,9 +265,22 @@ impl Settings {
         state.verify = self.backup.verify;
         state.logs = picked(&self.logs.kinds, &LOGS);
         state.remember_data = self.remember_data;
-        state.saved_data = if self.remember_data { self.saved_data.iter().map(|d| crate::app::SavedData { user: d.user, code: crate::app::Secret(d.code.clone()) }).collect() } else { Vec::new() };
+        state.saved_data = self.saved_data.iter().map(|d| {
+    crate::app::SavedData {
+        user: d.user,
+        code: crate::app::Secret(d.code.clone())
+    }
+}).collect();
         state.auto_wlan = self.auto_wlan;
-        state.saved_wlan = if self.auto_wlan { self.saved_wlan.iter().filter_map(|w| Some(crate::app::SavedWlan { ssid: unhex(&w.ssid)?, name: w.name.clone(), security: security_of(&w.security)?, password: crate::app::Secret(w.password.clone()) })).take(16).collect() } else { Vec::new() };
+        state.saved_wlan = self.saved_wlan.iter()
+    .filter_map(|w| Some(crate::app::SavedWlan {
+        ssid: unhex(&w.ssid)?,
+        name: w.name.clone(),
+        security: security_of(&w.security)?,
+        password: crate::app::Secret(w.password.clone())
+    }))
+    .take(16)
+    .collect();
         if let Some(at) = LOG_PLACES.iter().position(|place| *place == self.logs.to) {
             state.logs_to = at;
         }
