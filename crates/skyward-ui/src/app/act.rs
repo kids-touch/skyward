@@ -667,6 +667,17 @@ impl App {
                     self.say(l.pick(texts::toast::WEP_UNSUPPORTED), now);
                     return Vec::new();
                 }
+                // Show the chosen network as joining immediately. The saved
+                // credential remains in `saved_wlan` for later reconnection.
+                if let Some(wlan) = self.state.wlan.as_mut() {
+                    wlan.joined = Some(Joined {
+                        ssid: saved.ssid.clone(),
+                        name: saved.name.clone(),
+                        security: saved.security,
+                        stage: Joining::Joining,
+                    });
+                }
+                self.refresh();
                 return vec![Effect::JoinWlan {
                     ssid: saved.ssid,
                     name: saved.name,
