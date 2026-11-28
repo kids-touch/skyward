@@ -22,6 +22,7 @@ use crate::widgets::{self, Caption, Detail, Fact, Outline, Row, Spec, SystemCard
 use skyward_info::{DeviceInfo, VERSION};
 use skyward_install::{Outcome, Place as FlashPlace, Reflash, Refusal, Stage};
 use skyward_net::download::Progress;
+use skyward_net::github::DownloadSource;
 use skyward_net::supplicant::Security;
 use skyward_net::wlan::{Bands, Network, Power, Stage as Joining};
 use skyward_systems::{Held, Who};
@@ -3160,9 +3161,28 @@ pub fn skyward_update(cx: &Ctx) -> Frame {
     let y = widgets::info_card(&mut c, t, f, y, &[(l.pick(texts::update::CURRENT_VERSION), VERSION.to_string())]);
     let y = widgets::section(&mut c, t, f, y, l.pick(texts::update::ONLINE));
     let y = skyward_online(&mut c, cx, y, &mut out);
+    let y = skyward_source(&mut c, cx, y + t.m.card_gap, &mut out);
     let points = [l.pick(texts::skyward_update::FROM_GITHUB), l.pick(texts::skyward_update::BOTH_SLOTS), l.pick(texts::skyward_update::REBOOT_TO_USE)];
     let y = widgets::notes(&mut c, t, f, y + t.m.card_gap, l.pick(texts::common::NOTES), &points);
     Frame::new(t, fit(c, t, y), out, l.pick(texts::page::SKYWARD_UPDATE), top)
+}
+
+/// The source used for Skyward's own update download.
+fn skyward_source(c: &mut Canvas, cx: &Ctx, y: f32, out: &mut Vec<Hit>) -> f32 {
+    let (t, f, s, l) = (cx.t, cx.f, cx.state, cx.state.lang);
+    let y = widgets::section(c, t, f, y, l.pick(texts::skyward_update::DOWNLOAD_SOURCE));
+    let rows = [
+        Row::new("GHFast").trail(Trail::Check(s.skyward_source == DownloadSource::GhFast)),
+        Row::new("GHProxy").trail(Trail::Check(s.skyward_source == DownloadSource::GhProxy)),
+        Row::new("GitHub").trail(Trail::Check(s.skyward_source == DownloadSource::Github)),
+    ];
+    let list = widgets::list(c, t, f, y, &rows);
+    out.extend(hits(&list.rows, &[
+        Action::SkywardDownloadSource(DownloadSource::GhFast),
+        Action::SkywardDownloadSource(DownloadSource::GhProxy),
+        Action::SkywardDownloadSource(DownloadSource::Github),
+    ]));
+    list.bottom
 }
 
 /// Asking GitHub for Skyward's newest release, then updating to it: its

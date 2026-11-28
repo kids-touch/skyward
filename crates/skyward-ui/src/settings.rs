@@ -7,6 +7,7 @@
 
 use crate::app::{AutoRoot, Place, State, SystemZone, AOD_DATES, SCREEN_OFF, TIME_ZONES};
 use crate::Lang;
+use skyward_net::github::DownloadSource;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -81,6 +82,8 @@ pub struct Settings {
     /// Automatically reconnect to previously joined WLANs.
     pub auto_wlan: bool,
     pub saved_wlan: Vec<KeptWlan>,
+    /// The selected source for Skyward's own update download.
+    pub skyward_download_source: String,
 }
 
 /// A remembered DATA screen-lock credential. Stored in /metadata settings.
@@ -191,6 +194,7 @@ impl Settings {
             saved_data: state.saved_data.iter().map(|d| KeptData { user: d.user, code: d.code.0.clone() }).collect(),
             auto_wlan: state.auto_wlan,
             saved_wlan: state.saved_wlan.iter().map(|w| KeptWlan { ssid: hex(&w.ssid), name: w.name.clone(), security: security_name(w.security).into(), password: w.password.0.clone() }).collect(),
+            skyward_download_source: state.skyward_source.name().to_string(),
         }
     }
 
@@ -272,6 +276,9 @@ impl Settings {
     }
 }).collect();
         state.auto_wlan = self.auto_wlan;
+        if let Some(source) = DownloadSource::named(&self.skyward_download_source) {
+            state.skyward_source = source;
+        }
         state.saved_wlan = self.saved_wlan.iter()
     .filter_map(|w| Some(crate::app::SavedWlan {
         ssid: unhex(&w.ssid)?,
@@ -399,6 +406,7 @@ mod tests {
     #[test]
     fn the_settings_go_round_through_their_file() {
         let state = State {
+            skyward_source: DownloadSource::GhFast,
             lang: Lang::En,
             language_chosen: true,
             dark: true,
@@ -430,6 +438,7 @@ mod tests {
         assert!(!back.follow_system_zone);
         assert_eq!(back.system_zone, state.system_zone, "a zone of the system's that the pages do not list");
         assert_eq!(back.auto_root, AutoRoot::KernelSu, "the chosen root patches the new slot after an install");
+        assert_eq!(back.skyward_source, DownloadSource::GhFast, "the chosen Skyward download source is kept");
         assert!(back.kernel_su_online, "the next KernelSU install asks for the latest release");
     }
 
@@ -446,6 +455,7 @@ mod tests {
         assert_eq!(json["backup"]["parts"], serde_json::json!(["boot", "modem"]));
         assert_eq!(json["logs"]["to"], "temporary");
         assert_eq!(json["auto_root"], "none");
+        assert_eq!(json["skyward_download_source"], "github");
         assert_eq!(json["spoken"], "zh-Hans");
         assert!(json.get("language").is_none(), "no language is chosen until one is");
         let never = Settings::of(&State { screen_off: SCREEN_OFF.len() - 1, ..State::default() });
@@ -472,6 +482,7 @@ mod tests {
             screen_off: 7,
             time_zone: "Mars/Olympus".into(),
             system_time_zone: Some("Mars/Olympus".into()),
+            skyward_download_source: "unknown".into(),
             backup: Backup { parts: vec!["boot".into(), "photos".into()], to: "cloud".into(), ..Backup::default() },
             logs: Logs { kinds: vec!["kernel".into()], to: "printer".into() },
             ..Settings::default()
@@ -483,6 +494,7 @@ mod tests {
         assert_eq!((state.screen_off, state.time_zone, state.backup_to, state.logs_to), (start.screen_off, start.time_zone, start.backup_to, start.logs_to));
         assert!(!state.language_chosen);
         assert_eq!(state.system_zone, None, "a zone the recovery carries no rules for");
+        assert_eq!(state.skyward_source, DownloadSource::Github, "an unknown source leaves the default in place");
         assert_eq!(state.backup, [true, false, false, false, false], "a part this version has not is left out");
         assert_eq!(state.logs, [false, true]);
     }
