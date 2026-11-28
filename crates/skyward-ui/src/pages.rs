@@ -3188,13 +3188,26 @@ fn skyward_online(c: &mut Canvas, cx: &Ctx, y: f32, out: &mut Vec<Hit>) -> f32 {
         }
     };
     let version = &newest.version;
-    let (title, detail) = match (newest.newer, &newest.build) {
-        (true, Some(build)) => (texts::update::new_version_named(l, version), texts::skyward_update::package(l, fmt::file_size(build.size))),
-        (true, None) => (texts::update::new_version_named(l, version), l.pick(texts::skyward_update::NO_PACKAGE).to_string()),
-        (false, _) => (l.pick(texts::update::UP_TO_DATE).to_string(), texts::skyward_update::newest_is(l, version)),
-    };
+    let (title, detail) = match (newest.newer, newest.repair, &newest.build) {
+    (true, _, Some(build)) => (
+        texts::update::new_version_named(l, version),
+        texts::skyward_update::package(l, fmt::file_size(build.size)),
+    ),
+    (true, _, None) => (
+        texts::update::new_version_named(l, version),
+        l.pick(texts::skyward_update::NO_PACKAGE).to_string(),
+    ),
+    (false, true, Some(build)) => (
+        l.pick(texts::update::UP_TO_DATE).to_string(),
+        texts::skyward_update::package(l, fmt::file_size(build.size)),
+    ),
+    _ => (
+        l.pick(texts::update::UP_TO_DATE).to_string(),
+        texts::skyward_update::newest_is(l, version),
+    ),
+};
     let y = widgets::list(c, t, f, y, &[Row::new(&title).icon(GREEN, Icon::Install).subtitle(&detail).trail(Trail::None)]).bottom;
-    if !newest.newer || newest.build.is_none() {
+    if (!newest.newer && !newest.repair) || newest.build.is_none() {
         return y;
     }
     match &s.skyward_job {
@@ -3249,7 +3262,12 @@ fn skyward_online(c: &mut Canvas, cx: &Ctx, y: f32, out: &mut Vec<Hit>) -> f32 {
                 Some(SkywardEnd::Updated(_)) => unreachable!("an update that went in shows how it did"),
                 None => {}
             }
-            let mut row = Row::new(l.pick(texts::skyward_update::DOWNLOAD_AND_UPDATE));
+            let label = if newest.repair {
+    texts::skyward_update::REPAIR_DOWNLOAD
+} else {
+    texts::skyward_update::DOWNLOAD_AND_UPDATE
+};
+let mut row = Row::new(l.pick(label));
             if !s.online() {
                 row = row.subtitle(l.pick(texts::update::WLAN_FIRST));
             }
