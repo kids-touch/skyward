@@ -239,7 +239,8 @@ jobs:
         run: |
           version="${GITHUB_SHA::7}"
           release_tag="test-$version"
-          release_title="Skyward Recovery Test $version"
+          app_version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
+release_title="$app_version"
 
           zips=()
           for config in devices/*.toml; do
