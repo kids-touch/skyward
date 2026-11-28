@@ -21,6 +21,34 @@ pub struct Newest {
     pub build: Option<Build>,
 }
 
+/// The source chosen for downloading Skyward itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DownloadSource {
+    GhFast,
+    GhProxy,
+    #[default]
+    Github,
+}
+
+impl DownloadSource {
+    pub const fn name(self) -> &'static str {
+        match self {
+            DownloadSource::GhFast => "ghfast",
+            DownloadSource::GhProxy => "ghproxy",
+            DownloadSource::Github => "github",
+        }
+    }
+
+    pub fn named(name: &str) -> Option<Self> {
+        match name {
+            "ghfast" => Some(DownloadSource::GhFast),
+            "ghproxy" => Some(DownloadSource::GhProxy),
+            "github" => Some(DownloadSource::Github),
+            _ => None,
+        }
+    }
+}
+
 /// A phone's zip in a release, which holds Skyward's image for the phone.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Build {
@@ -38,11 +66,15 @@ pub struct Build {
 }
 
 impl Build {
-    /// Where to download the zip from, in the order to try: the file's own
-    /// short-lived address, where GitHub's API gave one, then the release's
-    /// link on github.com, which some networks do not reach.
-    pub fn sources(&self, located: Option<String>) -> Vec<String> {
-        located.into_iter().chain([self.link.clone()]).collect()
+    /// The one address belonging to the source the user chose. Mirrors
+    /// proxy the public GitHub release URL; GitHub itself may use its fresh
+    /// signed asset address, refreshed on expiry without changing sources.
+    pub fn source_url(&self, source: DownloadSource, located: Option<String>) -> String {
+        match source {
+            DownloadSource::GhFast => format!("https://ghfast.top/{}", self.link),
+            DownloadSource::GhProxy => format!("https://ghproxy.net/{}", self.link),
+            DownloadSource::Github => located.unwrap_or_else(|| self.link.clone()),
+        }
     }
 }
 
@@ -192,12 +224,12 @@ mod tests {
     }
 
     #[test]
-    fn downloads_from_github_s_asset_location_then_its_release_link() {
+    fn uses_only_the_chosen_download_source() {
         let build = newest(ANSWER, "shennong", "1.0.0-Beta").unwrap().build.unwrap();
-        assert_eq!(build.sources(None), vec![build.link.clone()]);
-        assert_eq!(build.sources(Some("https://release-assets.githubusercontent.com/a?sig=1".into())), [
-            "https://release-assets.githubusercontent.com/a?sig=1",
-            build.link.as_str()
-        ]);
+        assert_eq!(build.source_url(DownloadSource::GhFast, None), format!("https://ghfast.top/{}", build.link));
+        assert_eq!(build.source_url(DownloadSource::GhProxy, None), format!("https://ghproxy.net/{}", build.link));
+        assert_eq!(build.source_url(DownloadSource::Github, None), build.link);
+        let located = "https://release-assets.githubusercontent.com/a?sig=1".to_string();
+        assert_eq!(build.source_url(DownloadSource::Github, Some(located.clone())), located);
     }
 }
