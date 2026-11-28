@@ -210,6 +210,7 @@ fn hits(rects: &[Rect], actions: &[Action]) -> Vec<Hit> {
 }
 
 /// The compact five-part status card immediately below the device card.
+#[allow(clippy::too_many_arguments)]
 fn home_status_card(c: &mut Canvas, t: &Theme, f: &Fonts, top: f32, i: &DeviceInfo, data: &Data, lang: Lang, page: usize) -> f32 {
     let m = &t.m;
     let x = m.margin;
