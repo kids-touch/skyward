@@ -26,11 +26,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # A release goes by its tag to whoever downloads it, and a build by the
-  # version built into it, which is what it holds against the newest
-  # release's tag when it looks for an update: a tag naming another
-  # version than the one built would have every phone find an update in
-  # the very build it runs. Such a tag publishes nothing.
   tag:
     name: Check that the tag names the version built
     if: github.ref_type == 'tag'
@@ -53,8 +48,6 @@ jobs:
       - name: Move rescue entry to Advanced
         run: python3 .github/scripts/apply-rescue-entry.py
       - uses: ./.github/actions/setup
-      # The workspace may gain crates whose dependencies are not yet in the
-      # committed lockfile. Resolve once here, then keep all checks locked.
       - name: Resolve the workspace lockfile
         run: cargo generate-lockfile
       - name: Lint what runs on the computer
@@ -72,13 +65,10 @@ jobs:
       - name: Move rescue entry to Advanced
         run: python3 .github/scripts/apply-rescue-entry.py
       - uses: ./.github/actions/setup
-      # Resolve newly added workspace dependencies before locked builds.
       - name: Resolve the workspace lockfile
         run: cargo generate-lockfile
       - name: Build the recovery service for the phone
         run: cargo ndk -t arm64-v8a --platform 30 build --locked --release -p skyward
-      # It runs as a second system's first program, before any library is
-      # there to load.
       - name: Build the second system's first program, static
         env:
           RUSTFLAGS: -C target-feature=+crt-static
@@ -153,8 +143,6 @@ jobs:
         with:
           path: stock/recovery.img
           key: stock-recovery-${{ steps.stock.outputs.recovery }}
-      # Only what the recovery partition takes is read of the package,
-      # which is several gigabytes in all.
       - name: Take the recovery partition out of the stock package
         if: steps.cache.outputs.cache-hit != 'true'
         run: tools/skyward-pack stock --config "devices/${{ matrix.device }}.toml" --out stock/recovery.img
@@ -175,14 +163,11 @@ jobs:
             --config "devices/$DEVICE.toml" --font resources/fonts/MiSansVF.ttf --mono resources/fonts/KirkMono-Regular.ttf \
             --mono-license resources/fonts/KirkMono-OFL.txt --out "out/$name.img"
           echo "name=$name" >> "$GITHUB_OUTPUT"
-      # The image is the whole partition, flashed as it is, and most of it
-      # is the room the recovery leaves empty; it is handed out zipped.
       - name: Zip the image
         working-directory: out
         env:
           NAME: ${{ steps.pack.outputs.name }}
         run: zip -9 "$NAME.zip" "$NAME.img"
-      # The artifact takes the zip's name.
       - uses: actions/upload-artifact@v7
         with:
           path: out/${{ steps.pack.outputs.name }}.zip
@@ -192,16 +177,17 @@ jobs:
 
   release:
     name: Publish the release
-    if: github.ref_type == 'tag'
+    if: |
+      always() &&
+      needs.check.result == 'success' &&
+      needs.recovery.result == 'success' &&
+      (github.ref == 'refs/heads/shennong' || (github.ref_type == 'tag' && needs.tag.result == 'success'))
     needs: [tag, check, recovery]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      # The devices' configurations say which phone each zip is for.
       - uses: actions/checkout@v7
-      # Each artifact is a zip, which the download keeps whole under its
-      # name, as it is handed out.
       - uses: actions/download-artifact@v8
         with:
           pattern: skyward-*
@@ -211,19 +197,28 @@ jobs:
       - name: Sum the zips
         working-directory: images
         run: sha256sum -- *.zip > SHA256SUMS
-      # Each zip shows on the release as the phone it is for, its model and
-      # then its codename, which is how people look for theirs; a device
-      # whose zip is missing stops the release.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="$GITHUB_REF_NAME"
+            release_tag="$GITHUB_REF_NAME"
+            release_title="$GITHUB_REF_NAME"
+            prerelease_args=()
+          else
+            version="${GITHUB_SHA::7}"
+            release_tag="test-$version"
+            release_title="Skyward Recovery Test $version"
+            prerelease_args=(--prerelease)
+          fi
+
           zips=()
           for config in devices/*.toml; do
             device=$(basename "$config" .toml)
             model=$(python3 -c 'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb"))["device"]["model"])' "$config")
-            zip=$(ls images/skyward-"$GITHUB_REF_NAME"-"$device"-*.zip)
+            zip=$(ls images/skyward-"$version"-"$device"-*.zip)
             zips+=("$zip#$model ($device)")
           done
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes "${zips[@]}" images/SHA256SUMS
+          gh release create "$release_tag" --title "$release_title" --generate-notes "${prerelease_args[@]}" "${zips[@]}" images/SHA256SUMS
