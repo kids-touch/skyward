@@ -1181,12 +1181,12 @@ fn clean_up(before: &[(i32, PathBuf)], mapped: &SlotMaps) -> Result<()> {
         if point == Path::new("/data") || point == Path::new("/metadata") {
             continue;
         }
-        if !skyward_block::mount::is_mount_point(&point)? {
-            if let Some(name) = point.to_str() {
-                skyward_block::fstab::mount_at(name)
-                    .with_context(|| format!("restore the original mount at {}", point.display()))?;
-                let _ = kmsg(&format!("install: restored the original mount at {}", point.display()));
-            }
+        if !skyward_block::mount::is_mount_point(&point)?
+            && let Some(name) = point.to_str()
+        {
+            skyward_block::fstab::mount_at(name)
+                .with_context(|| format!("restore the original mount at {}", point.display()))?;
+            let _ = kmsg(&format!("install: restored the original mount at {}", point.display()));
         }
     }
     remount_metadata()
