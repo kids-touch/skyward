@@ -660,13 +660,30 @@ impl App {
             }
             Action::JoinSavedNetwork(i) => {
                 let Some(saved) = self.state.saved_wlan.get(i).cloned() else { return Vec::new() };
-                if self.state.wlan.as_ref().and_then(|w| w.joined.as_ref()).is_some_and(|j| j.ssid == saved.ssid) {
+                let Some(w) = self.state.wlan.as_ref() else { return Vec::new() };
+                if w.joined.as_ref().is_some_and(|j| j.ssid == saved.ssid) {
                     return self.act(Action::OpenJoined, now);
+                }
+                // The row is offered only for a network found by the latest
+                // scan. Check again because the scan may have changed since
+                // the page was drawn.
+                if !w.networks.iter().any(|found| found.ssid == saved.ssid) {
+                    return Vec::new();
                 }
                 if !saved.security.joinable() {
                     self.say(l.pick(texts::toast::WEP_UNSUPPORTED), now);
                     return Vec::new();
                 }
+                // Move it into the joined row immediately, before the runtime
+                // reports progress. The runtime will replace this optimistic
+                // state with the actual joining/connected/failure state.
+                self.state.wlan.as_mut().unwrap().joined = Some(Joined {
+                    ssid: saved.ssid.clone(),
+                    name: saved.name.clone(),
+                    security: saved.security,
+                    stage: Joining::Joining,
+                });
+                self.refresh();
                 return vec![Effect::JoinWlan {
                     ssid: saved.ssid,
                     name: saved.name,
@@ -796,12 +813,6 @@ impl App {
                     return vec![Effect::CheckSkyward];
                 }
             }
-            Action::SkywardDownloadSource(source) => {
-                if self.state.skyward_source != source && !self.state.updating_skyward() {
-                    self.state.skyward_source = source;
-                    self.refresh();
-                }
-            }
             // The build goes into the recovery partitions an install may
             // write too, so one waits for the other.
             Action::UpdateSkyward => {
@@ -817,7 +828,7 @@ impl App {
                 if !self.state.updating_skyward() {
                     self.state.skyward_job = Some(SkywardJob { stage: None, rate: 0, outcome: None, stopping: false });
                     self.refresh();
-                    return vec![Effect::UpdateSkyward { build, source: self.state.skyward_source }];
+                    return vec![Effect::UpdateSkyward(build)];
                 }
             }
             // Only the download stops: writing, once begun, goes on to its

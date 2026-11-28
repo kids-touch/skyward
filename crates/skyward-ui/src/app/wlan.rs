@@ -168,7 +168,11 @@ mod tests {
     #[test]
     fn tapping_a_saved_wifi_joins_with_its_saved_password_without_prompting() {
         let mut app = App::new(Screen::Wlan, W, H, PPD);
-        app.state.wlan = Some(Wlan { power: Power::On, networks: Vec::new(), joined: None });
+        app.state.wlan = Some(Wlan {
+            power: Power::On,
+            networks: vec![network("Home-WiFi", -40, Security::Psk)],
+            joined: None,
+        });
         app.state.saved_wlan.push(SavedWlan {
             ssid: b"Home-WiFi".to_vec(),
             name: "Home-WiFi".into(),
@@ -183,6 +187,34 @@ mod tests {
             password: Secret("saved-pass-123".into()),
         }]);
         assert_eq!(app.screen(), Screen::Wlan, "no password page is opened");
+        let selected = app.state.wlan.as_ref().unwrap().joined.as_ref().unwrap();
+        assert_eq!((selected.ssid.as_slice(), selected.name.as_str(), &selected.stage),
+            (b"Home-WiFi".as_slice(), "Home-WiFi", &Joining::Joining),
+            "the selected WLAN appears in the joined row immediately");
+        let (f, i) = (fonts(), info());
+        let frame = app.frame(&f, &i);
+        assert!(!frame.hits.iter().any(|hit| matches!(hit.action, Action::JoinSavedNetwork(_))),
+            "the selected WLAN disappears from saved WLANs immediately");
+    }
+
+    #[test]
+    fn saved_wlans_are_shown_only_when_the_latest_scan_finds_them() {
+        let (f, i) = (fonts(), info());
+        let mut app = App::new(Screen::Wlan, W, H, PPD);
+        app.state.wlan = Some(Wlan {
+            power: Power::On,
+            networks: vec![network("Nearby", -40, Security::Psk)],
+            joined: None,
+        });
+        app.state.saved_wlan.push(SavedWlan {
+            ssid: b"Not-Nearby".to_vec(),
+            name: "Not-Nearby".into(),
+            security: Security::Psk,
+            password: Secret("saved-pass-123".into()),
+        });
+        let frame = app.frame(&f, &i);
+        assert!(!frame.hits.iter().any(|hit| matches!(hit.action, Action::JoinSavedNetwork(_))),
+            "a saved WLAN absent from the scan is not listed");
     }
 
     #[test]
