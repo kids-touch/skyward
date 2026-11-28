@@ -586,6 +586,7 @@ tap_to_see_why = "タップして原因を表示"
 no_second_system = "セカンドシステムなし"
 
 [skyward_update]
+download_source = "ダウンロード元"
 updating = "アップデート中"
 updated = "アップデート済み"
 package = "パッケージ {size}"

@@ -591,6 +591,7 @@ tap_to_see_why = "Nedenini görmek için dokunun"
 no_second_system = "İkinci sistem yok"
 
 [skyward_update]
+download_source = "İndirme kaynağı"
 updating = "Güncelleniyor"
 updated = "Güncellendi"
 package = "Paket {size}"

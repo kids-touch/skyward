@@ -586,6 +586,7 @@ tap_to_see_why = "点按查看原因"
 no_second_system = "未安装第二系统"
 
 [skyward_update]
+download_source = "下载源"
 updating = "正在更新"
 updated = "已更新"
 package = "安装包 {size}"

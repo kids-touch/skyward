@@ -601,6 +601,7 @@ tap_to_see_why = "Нажмите, чтобы узнать причину"
 no_second_system = "Второй системы нет"
 
 [skyward_update]
+download_source = "Источник загрузки"
 updating = "Обновление"
 updated = "Обновлено"
 package = "Пакет: {size}"

@@ -596,6 +596,7 @@ tap_to_see_why = "Toque para ver o motivo"
 no_second_system = "Nenhum segundo sistema"
 
 [skyward_update]
+download_source = "Fonte de download"
 updating = "Atualizando"
 updated = "Atualizado"
 package = "Pacote de {size}"

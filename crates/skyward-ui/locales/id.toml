@@ -586,6 +586,7 @@ tap_to_see_why = "Ketuk untuk lihat sebabnya"
 no_second_system = "Tidak ada sistem kedua"
 
 [skyward_update]
+download_source = "Sumber unduhan"
 updating = "Mengupdate"
 updated = "Sudah diupdate"
 package = "Paket {size}"

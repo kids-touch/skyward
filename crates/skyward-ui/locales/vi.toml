@@ -591,6 +591,7 @@ tap_to_see_why = "Nhấn để xem lý do"
 no_second_system = "Chưa có hệ thống thứ hai"
 
 [skyward_update]
+download_source = "Nguồn tải xuống"
 updating = "Đang cập nhật"
 updated = "Đã cập nhật"
 package = "Gói {size}"
