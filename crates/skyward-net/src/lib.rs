@@ -1,4 +1,3 @@
-pub mod browser;
 pub mod dhcp;
 pub mod dns;
 pub mod download;
