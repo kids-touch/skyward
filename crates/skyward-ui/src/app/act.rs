@@ -146,8 +146,6 @@ impl App {
                 };
                 *on = !*on;
                 let now_on = *on;
-                if switch == Switch::RememberData && !now_on { self.state.saved_data.clear(); self.state.data_auto_tried.clear(); }
-                if switch == Switch::AutoWlan && !now_on { self.state.saved_wlan.clear(); }
                 if matches!(switch, Switch::AodTap | Switch::WakeTap) {
                     self.dark_touch = None;
                     self.last_tap = None;
