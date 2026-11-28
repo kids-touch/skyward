@@ -58,6 +58,7 @@ pub const ENTRIES: &[Entry] = &[
     entry(page::WIPE, HOME, Screen::Wipe, keys::WIPE),
     entry(ADVANCED, HOME, Screen::Advanced, keys::ADVANCED),
     entry(page::FILES, ADVANCED, Screen::Files, keys::FILES),
+    entry(same("Browser"), ADVANCED, Screen::Browser, same("liulanqi browser web wangye")),
     entry(page::TERMINAL, ADVANCED, Screen::Terminal, keys::TERMINAL),
     entry(page::RELABEL, ADVANCED, Screen::Relabel, keys::RELABEL),
     entry(page::FILESYSTEMS, ADVANCED, Screen::Filesystems, keys::FILESYSTEMS),

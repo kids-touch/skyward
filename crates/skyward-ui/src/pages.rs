@@ -84,6 +84,7 @@ pub fn render(screen: Screen, cx: &Ctx) -> Frame {
         Screen::BackupJob => backup_job(cx),
         Screen::Rescue => rescue(cx),
         Screen::Advanced => advanced(cx),
+        Screen::Browser => browser(cx),
         Screen::Files => files(cx),
         Screen::FileInfo => file_info(cx),
         Screen::Permissions => permissions(cx),
@@ -2701,6 +2702,7 @@ pub fn advanced(cx: &Ctx) -> Frame {
     let top = t.m.content_top;
     let tools = widgets::list(&mut c, t, f, top, &[
         Row::new(l.pick(texts::page::FILES)).icon(BLUE, Icon::Folder),
+        Row::new("Browser").icon(SLATE, Icon::Globe),
         Row::new(l.pick(texts::page::TERMINAL)).icon(SLATE, Icon::Terminal),
         Row::new(l.pick(texts::page::RELABEL)).icon(PURPLE, Icon::Shield),
         Row::new(l.pick(texts::page::FILESYSTEMS)).icon(RED, Icon::Mount),
@@ -2711,6 +2713,7 @@ pub fn advanced(cx: &Ctx) -> Frame {
     ]);
     let out = hits(&tools.rows, &[
         Action::Open(Screen::Files),
+        Action::Open(Screen::Browser),
         Action::Open(Screen::Terminal),
         Action::Open(Screen::Relabel),
         Action::Open(Screen::Filesystems),
@@ -2720,6 +2723,153 @@ pub fn advanced(cx: &Ctx) -> Frame {
         Action::Open(Screen::Update),
     ]);
     Frame::new(t, c, out, l.pick(texts::page::ADVANCED), top)
+}
+
+/// A deliberately small reading browser using the recovery's own page style.
+pub fn browser(cx: &Ctx) -> Frame {
+    let (t, f, s, l) = (cx.t, cx.f, cx.state, cx.state.lang);
+    let mut c = long_page(cx);
+    let mut out = Vec::new();
+    let top = t.m.content_top;
+    let y = widgets::section_first(&mut c, t, f, top, l.pick(same("Address")));
+    let (below, caret) = widgets::text_field(&mut c, t, f, y, &s.browser_url);
+    let field = Rect::new(t.m.margin, y, t.m.w as f32 - t.m.margin * 2.0, t.m.dp(56.0));
+    out.push(Hit { rect: field, action: Action::TypeInto(Field::BrowserUrl) });
+    let navigation = [
+        Row::new(l.pick(same("Back"))).trail(if s.browser_history_at > 0 { Trail::Arrow } else { Trail::None }),
+        Row::new(l.pick(same("Forward"))).trail(if s.browser_history_at + 1 < s.browser_history.len() { Trail::Arrow } else { Trail::None }),
+        Row::new(l.pick(same("Refresh"))).trail(Trail::Arrow),
+        Row::new(l.pick(same("Open page"))).trail(Trail::Arrow),
+    ];
+    let nav = widgets::list(&mut c, t, f, below + t.m.card_gap, &navigation);
+    out.extend(hits(&nav.rows, &[Action::BrowserBack, Action::BrowserForward, Action::BrowserRefresh, Action::GoBrowser]));
+    let mut bottom = nav.bottom;
+    if s.browser_loading {
+        bottom = widgets::footnote(&mut c, t, f, bottom + t.m.card_gap, l.pick(same("Loading page…")));
+    }
+    if let Some(result) = &s.browser_page {
+        bottom += t.m.card_gap;
+        match result {
+            Err(why) => {
+                bottom = widgets::footnote(&mut c, t, f, bottom, &format!("Page load failed: {why}"));
+            }
+            Ok(page) => {
+                bottom = widgets::section(&mut c, t, f, bottom, if page.title.is_empty() { &page.url } else { &page.title });
+                if !page.text.is_empty() { bottom = widgets::paragraph(&mut c, t, f, bottom, &page.text); }
+                if !page.images.is_empty() {
+                    bottom = widgets::section(&mut c, t, f, bottom + t.m.card_gap, l.pick(same("Images")));
+                    for image in &page.images {
+                        let label = if image.alt.is_empty() { image.url.as_str() } else { image.alt.as_str() };
+                        bottom = widgets::footnote(&mut c, t, f, bottom, label);
+                        let image_top = bottom + t.m.dp(8.0);
+                        let height = match image.mime.as_str() {
+                            "image/png" => draw_browser_png(&mut c, t, &image.bytes, image_top),
+                            "image/jpeg" | "image/jpg" => draw_browser_jpeg(&mut c, t, &image.bytes, image_top),
+                            _ => None,
+                        };
+                        if let Some(height) = height {
+                            bottom = image_top + height + t.m.dp(12.0);
+                        } else {
+                            bottom = widgets::footnote(&mut c, t, f, bottom, l.pick(same("This image format could not be displayed")));
+                        }
+                    }
+                }
+                if !page.links.is_empty() {
+                    bottom = widgets::section(&mut c, t, f, bottom + t.m.card_gap, l.pick(same("Links")));
+                    let rows: Vec<Row> = page.links.iter().map(|link| Row::new(&link.label).subtitle(&link.url)).collect();
+                    let list = widgets::list(&mut c, t, f, bottom, &rows);
+                    out.extend(hits(&list.rows, &(0..page.links.len()).map(Action::BrowserLink).collect::<Vec<_>>()));
+                    bottom = list.bottom;
+                }
+            }
+        }
+    }
+    keyboard_hits(&mut c, t, f, s, l.pick(same("Open page")), &mut out);
+    Frame { caret: Some(caret), ..Frame::new(t, fit(c, t, bottom + t.m.margin), out, "Browser", top) }
+}
+
+/// Decode and draw a bounded PNG image, keeping its aspect ratio.
+fn draw_browser_png(c: &mut Canvas, t: &Theme, bytes: &[u8], top: f32) -> Option<f32> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut reader = decoder.read_info().ok()?;
+    let dimensions = reader.info();
+    if dimensions.width == 0 || dimensions.height == 0
+        || (dimensions.width as usize).saturating_mul(dimensions.height as usize) > 4_000_000
+    { return None; }
+    let mut data = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut data).ok()?;
+    let (sw, sh) = (info.width as usize, info.height as usize);
+    if sw == 0 || sh == 0 || sw.saturating_mul(sh) > 4_000_000 { return None; }
+    let channels = match info.color_type {
+        png::ColorType::Rgba => 4,
+        png::ColorType::Rgb => 3,
+        png::ColorType::GrayscaleAlpha => 2,
+        png::ColorType::Grayscale => 1,
+        png::ColorType::Indexed => return None,
+    };
+    let max_w = (t.m.w as f32 - t.m.margin * 2.0).max(1.0);
+    let max_h = t.m.dp(240.0);
+    let scale = (max_w / sw as f32).min(max_h / sh as f32).min(1.0);
+    let (dw, dh) = ((sw as f32 * scale).round().max(1.0) as usize, (sh as f32 * scale).round().max(1.0) as usize);
+    let x0 = ((t.m.w as f32 - dw as f32) * 0.5).round() as i32;
+    for y in 0..dh {
+        let sy = y * sh / dh;
+        for x in 0..dw {
+            let sx = x * sw / dw;
+            let at = (sy * sw + sx) * channels;
+            let (r, g, b, a) = match channels {
+                4 => (data[at], data[at + 1], data[at + 2], data[at + 3]),
+                3 => (data[at], data[at + 1], data[at + 2], 255),
+                2 => (data[at], data[at], data[at], data[at + 1]),
+                _ => (data[at], data[at], data[at], 255),
+            };
+            c.blend(x0 + x as i32, top.round() as i32 + y as i32, Rgba { r, g, b, a }, 1.0);
+        }
+    }
+    Some(dh as f32)
+}
+
+/// Decode and draw a bounded JPEG image, keeping its aspect ratio.
+fn draw_browser_jpeg(c: &mut Canvas, t: &Theme, bytes: &[u8], top: f32) -> Option<f32> {
+    let mut decoder = jpeg_decoder::Decoder::new(std::io::Cursor::new(bytes));
+    decoder.set_max_decoding_buffer_size(16 * 1024 * 1024);
+    let data = decoder.decode().ok()?;
+    let info = decoder.info()?;
+    let (sw, sh) = (info.width as usize, info.height as usize);
+    if sw == 0 || sh == 0 || sw.saturating_mul(sh) > 4_000_000 { return None; }
+    let channels = match info.pixel_format {
+        jpeg_decoder::PixelFormat::L8 => 1,
+        jpeg_decoder::PixelFormat::L16 => 2,
+        jpeg_decoder::PixelFormat::RGB24 => 3,
+        jpeg_decoder::PixelFormat::CMYK32 => 4,
+    };
+    if data.len() < sw.saturating_mul(sh).saturating_mul(channels) { return None; }
+    let max_w = (t.m.w as f32 - t.m.margin * 2.0).max(1.0);
+    let max_h = t.m.dp(240.0);
+    let scale = (max_w / sw as f32).min(max_h / sh as f32).min(1.0);
+    let (dw, dh) = ((sw as f32 * scale).round().max(1.0) as usize, (sh as f32 * scale).round().max(1.0) as usize);
+    let x0 = ((t.m.w as f32 - dw as f32) * 0.5).round() as i32;
+    for y in 0..dh {
+        let sy = y * sh / dh;
+        for x in 0..dw {
+            let sx = x * sw / dw;
+            let at = (sy * sw + sx) * channels;
+            let (r, g, b) = match channels {
+                3 => (data[at], data[at + 1], data[at + 2]),
+                4 => {
+                    let k = data[at + 3] as u16;
+                    ((data[at] as u16 * k / 255) as u8,
+                     (data[at + 1] as u16 * k / 255) as u8,
+                     (data[at + 2] as u16 * k / 255) as u8)
+                }
+                2 => (data[at], data[at], data[at]),
+                _ => (data[at], data[at], data[at]),
+            };
+            c.blend(x0 + x as i32, top.round() as i32 + y as i32, Rgba::rgb(r, g, b), 1.0);
+        }
+    }
+    Some(dh as f32)
 }
 
 /// Giving the data partition's files the SELinux labels the installed
