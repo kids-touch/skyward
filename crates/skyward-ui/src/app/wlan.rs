@@ -59,7 +59,10 @@ pub(super) fn refused(l: Lang, security: Security, password: &str) -> Option<&'s
 impl App {
     /// Keep a successfully joined network, most recent first.
     pub fn remember_wlan(&mut self, ssid: Vec<u8>, name: String, security: Security, password: String) {
-        if !self.state.auto_wlan || !security.joinable() || ssid.is_empty() { return; }
+        // Remember every successfully joined network. `auto_wlan` controls
+        // automatic reconnection only; it must not control whether networks
+        // and their credentials are kept.
+        if !security.joinable() || ssid.is_empty() { return; }
         self.state.saved_wlan.retain(|s| s.ssid != ssid);
         self.state.saved_wlan.insert(0, SavedWlan { ssid, name, security, password: Secret(password) });
         self.state.saved_wlan.truncate(16);
