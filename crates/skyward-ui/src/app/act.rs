@@ -796,6 +796,12 @@ impl App {
                     return vec![Effect::CheckSkyward];
                 }
             }
+            Action::SkywardDownloadSource(source) => {
+                if self.state.skyward_source != source && !self.state.updating_skyward() {
+                    self.state.skyward_source = source;
+                    self.refresh();
+                }
+            }
             // The build goes into the recovery partitions an install may
             // write too, so one waits for the other.
             Action::UpdateSkyward => {
@@ -811,7 +817,7 @@ impl App {
                 if !self.state.updating_skyward() {
                     self.state.skyward_job = Some(SkywardJob { stage: None, rate: 0, outcome: None, stopping: false });
                     self.refresh();
-                    return vec![Effect::UpdateSkyward(build)];
+                    return vec![Effect::UpdateSkyward { build, source: self.state.skyward_source }];
                 }
             }
             // Only the download stops: writing, once begun, goes on to its

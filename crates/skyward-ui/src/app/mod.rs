@@ -26,7 +26,7 @@ use crate::widgets::{self, Bar, Bolt, Cap, Layer, WlanMark};
 use skyward_info::DeviceInfo;
 use skyward_install::{Event, ImageKind, Outcome, Place as FlashPlace, Reflash, Refusal, Stage, Target as FlashTarget};
 use skyward_net::download::{Failure, Progress};
-use skyward_net::github::{Build, Newest};
+use skyward_net::github::{Build, DownloadSource, Newest};
 use skyward_net::release::{Release, Unanswered};
 use skyward_net::supplicant::Security;
 use skyward_net::wlan::{Joined, Network, Power, Stage as Joining, Traffic, Wlan};
@@ -492,6 +492,8 @@ pub enum Action {
     SetAutoRoot(AutoRoot),
     /// Ask GitHub for Skyward's newest release.
     CheckSkyward,
+    /// Choose the source used for Skyward's own update download.
+    SkywardDownloadSource(DownloadSource),
     /// Download the newest release's build for the phone and write it into
     /// the recovery partitions.
     UpdateSkyward,
@@ -781,10 +783,10 @@ pub enum Effect {
     /// Ask GitHub for Skyward's newest release, telling what it answered
     /// with [`App::skyward_checked`].
     CheckSkyward,
-    /// Download `build` and write it into the recovery partitions, telling
-    /// how it goes with [`App::skyward_progress`] and
-    /// [`App::skyward_ended`].
-    UpdateSkyward(Build),
+    /// Download `build` from the chosen source and write it into the
+    /// recovery partitions, telling how it goes with [`App::skyward_progress`]
+    /// and [`App::skyward_ended`].
+    UpdateSkyward { build: Build, source: DownloadSource },
     StopSkywardUpdate,
     /// Merge the update that waits in the slot the phone runs from,
     /// telling how it goes with [`App::set_update`].

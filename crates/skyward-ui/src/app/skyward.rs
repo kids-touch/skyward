@@ -129,7 +129,9 @@ mod tests {
         app.state.install = Install::Waiting;
         assert!(tap(&mut app, &f, &i, Action::UpdateSkyward).is_empty(), "an install under way goes first");
         app.state.install = Install::Idle;
-        assert_eq!(tap(&mut app, &f, &i, Action::UpdateSkyward), vec![Effect::UpdateSkyward(build.clone())]);
+        tap(&mut app, &f, &i, Action::SkywardDownloadSource(DownloadSource::GhProxy));
+        assert_eq!(app.state.skyward_source, DownloadSource::GhProxy);
+        assert_eq!(tap(&mut app, &f, &i, Action::UpdateSkyward), vec![Effect::UpdateSkyward { build: build.clone(), source: DownloadSource::GhProxy }]);
         app.skyward_progress(SkywardStage::Download(Progress::Downloading { done: 10_000_000, total: 42_739_608 }), 2_000_000);
         app.key(Key::Back, 0);
         assert_eq!(app.screen(), Screen::SkywardUpdate, "the page stays while the build downloads");
@@ -137,7 +139,7 @@ mod tests {
         assert!(!app.frame(&f, &i).hits.iter().any(|h| h.action == Action::StopSkywardUpdate), "stopping, it is not asked again");
         // An end lights the panel, and a touch just after only keeps it lit.
         app.skyward_ended(SkywardEnd::Stopped, 0);
-        assert_eq!(tap_at(&mut app, &f, &i, Action::UpdateSkyward, 2000), vec![Effect::UpdateSkyward(build.clone())], "a download stopped carries on");
+        assert_eq!(tap_at(&mut app, &f, &i, Action::UpdateSkyward, 2000), vec![Effect::UpdateSkyward { build: build.clone(), source: DownloadSource::GhProxy }], "a download stopped carries on");
         app.skyward_progress(SkywardStage::Write { done: 1 << 20, total: 4 << 20 }, 0);
         assert!(!app.frame(&f, &i).hits.iter().any(|h| h.action == Action::StopSkywardUpdate), "writing goes on to its end");
         app.key(Key::Back, 2100);
