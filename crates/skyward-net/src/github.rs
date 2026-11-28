@@ -13,11 +13,11 @@ const API_VERSION: &str = "2022-11-28";
 /// The newest release, as the build of Skyward that asked sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Newest {
-    /// Its version, such as 0.1.4.
     pub version: String,
-    /// It is newer than the build that asked.
+    /// GitHub has a higher version.
     pub newer: bool,
-    /// Its zip for the phone; none when it has none.
+    /// Same version, but a newer REC build is available.
+    pub repair: bool,
     pub build: Option<Build>,
 }
 
@@ -95,8 +95,15 @@ let start = format!("skyward-{build_version}-{codename}-");
     };
     // A matching build of the same version is offered too: test builds
     // deliberately keep the Cargo version while their Git commit changes.
-    let newer = newest >= this && build.is_some();
-    Ok(Newest { version: version.to_string(), newer, build })
+    let newer = newest > this && build.is_some();
+let repair = newest == this && build.is_some();
+
+Ok(Newest {
+    version: version.to_string(),
+    newer,
+    repair,
+    build,
+})
 }
 
 /// Ask GitHub for Skyward's newest release, and its zip for the phone
