@@ -90,10 +90,11 @@ mod tests {
     use super::*;
     use crate::app::testing::*;
 
-    fn skyward_newest(newer: bool) -> Newest {
+    fn skyward_newest(newer: bool, repair: bool) -> Newest {
         Newest {
             version: "0.1.4".into(),
             newer,
+            repair,
             build: Some(Build {
                 name: "skyward-v0.1.4-ishtar-OS3.0.308.0.WMACNXM.zip".into(),
                 url: "https://api.github.com/repos/kirklin/skyward/releases/assets/719751598".into(),
@@ -123,8 +124,8 @@ mod tests {
         app.set_wlan(connected("Skyward"));
         assert_eq!(tap(&mut app, &f, &i, Action::CheckSkyward), vec![Effect::CheckSkyward]);
         assert_eq!(app.state.skyward_check, SkywardCheck::Asking);
-        app.skyward_checked(Ok(skyward_newest(true)));
-        let build = skyward_newest(true).build.unwrap();
+        app.skyward_checked(Ok(skyward_newest(true, false)));
+        let build = skyward_newest(true, false).build.unwrap();
         app.state.install = Install::Waiting;
         assert!(tap(&mut app, &f, &i, Action::UpdateSkyward).is_empty(), "an install under way goes first");
         app.state.install = Install::Idle;
@@ -158,7 +159,7 @@ mod tests {
         app.skyward_checked(Err(Unanswered::Failed("GitHub answered 403 Forbidden: API rate limit exceeded".into())));
         app.key(Key::Back, 0);
         assert_eq!(tap(&mut app, &f, &i, Action::Open(Screen::SkywardUpdate)), vec![Effect::CheckSkyward], "a failed check is tried again");
-        app.skyward_checked(Ok(skyward_newest(false)));
+        app.skyward_checked(Ok(skyward_newest(false, false)));
         assert!(!app.frame(&f, &i).hits.iter().any(|h| h.action == Action::UpdateSkyward), "nothing newer to update to");
         app.key(Key::Back, 0);
         assert!(tap(&mut app, &f, &i, Action::Open(Screen::SkywardUpdate)).is_empty(), "an answer heard is not asked again");
