@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn downloads_from_github_s_asset_location_then_its_release_link() {
         let build = newest(ANSWER, "shennong", "1.0.0-Beta").unwrap().build.unwrap();
-        assert_eq!(build.sources(None), [build.link.clone()]);
+        assert_eq!(build.sources(None), std::slice::from_ref(&build.link));
         assert_eq!(build.sources(Some("https://release-assets.githubusercontent.com/a?sig=1".into())), [
             "https://release-assets.githubusercontent.com/a?sig=1",
             build.link.as_str()
