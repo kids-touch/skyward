@@ -35,6 +35,7 @@ use skyward_vab::{BootSlots, Hold, Slot, SnapshotState, Standing};
 
 mod act;
 mod backup;
+mod browser;
 mod decrypt;
 mod draw;
 mod entry;
@@ -131,6 +132,8 @@ pub enum Screen {
     Rescue,
     /// Tools for the experienced: files, a terminal, the logs.
     Advanced,
+    /// A lightweight reading browser: HTML text, links and raster images.
+    Browser,
     Files,
     /// One file, and what can be done with it.
     FileInfo,
@@ -459,6 +462,13 @@ pub enum Action {
     AddNetwork,
     /// Type into this field of the page that adds a network.
     TypeInto(Field),
+    /// Load the address currently typed in the browser.
+    GoBrowser,
+    /// Follow a link extracted from the current browser page.
+    BrowserLink(usize),
+    BrowserBack,
+    BrowserForward,
+    BrowserRefresh,
     /// Open the protections a network added by hand can have.
     ChooseSecurity,
     /// Take this protection, and close the list.
@@ -567,6 +577,8 @@ pub struct AvbStatus {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Effect {
     Reboot(Target),
+    /// Fetch a lightweight HTML page and its supported images.
+    Browse(String),
     /// A short tap of the vibration motor.
     Haptic,
     /// The motor's two quick ticks as the power key turns the screen off,

@@ -47,6 +47,14 @@ pub struct State {
     /// are up.
     pub files_query: String,
     pub files_search: bool,
+    /// Address typed into the built-in lightweight browser.
+    pub browser_url: String,
+    /// Browser navigation history and the currently selected entry.
+    pub browser_history: Vec<String>,
+    pub browser_history_at: usize,
+    /// The last page loaded by the built-in browser, or its error.
+    pub browser_page: Option<Result<skyward_net::browser::BrowserPage, String>>,
+    pub browser_loading: bool,
     /// What the slot's vbmeta says, once read.
     pub avb: Option<Result<AvbStatus, String>>,
     pub avb_verity: bool,
@@ -299,6 +307,11 @@ impl Default for State {
             sort_desc: false,
             files_query: String::new(),
             files_search: false,
+            browser_url: String::new(),
+            browser_history: Vec::new(),
+            browser_history_at: 0,
+            browser_page: None,
+            browser_loading: false,
             avb: None,
             avb_verity: true,
             avb_verification: true,
