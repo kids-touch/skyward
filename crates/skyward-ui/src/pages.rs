@@ -22,6 +22,7 @@ use crate::widgets::{self, Caption, Detail, Fact, Outline, Row, Spec, SystemCard
 use skyward_info::{DeviceInfo, VERSION};
 use skyward_install::{Outcome, Place as FlashPlace, Reflash, Refusal, Stage};
 use skyward_net::download::Progress;
+use skyward_net::github::DownloadSource;
 use skyward_net::supplicant::Security;
 use skyward_net::wlan::{Bands, Network, Power, Stage as Joining};
 use skyward_systems::{Held, Who};
@@ -3160,7 +3161,7 @@ pub fn skyward_update(cx: &Ctx) -> Frame {
     let y = widgets::info_card(&mut c, t, f, y, &[(l.pick(texts::update::CURRENT_VERSION), VERSION.to_string())]);
 
     // The source is chosen explicitly and kept in settings for the next start.
-    let y = widgets::section(&mut c, t, f, y, l.pick(texts::local::DOWNLOAD_SOURCE));
+    let y = widgets::section(&mut c, t, f, y, l.pick(texts::skyward_update::DOWNLOAD_SOURCE));
     let source_rows = [
         Row::new("GitHub").trail(if cx.state.skyward_source == DownloadSource::Github { Trail::Choice("✓") } else { Trail::None }),
         Row::new("ghfast.top").trail(if cx.state.skyward_source == DownloadSource::GhFast { Trail::Choice("✓") } else { Trail::None }),
