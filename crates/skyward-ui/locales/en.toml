@@ -674,7 +674,7 @@ no_second_system = "No second system"
 
 # What the settings page says beside its Skyward update entry.
 [skyward_update]
-repair_download = "Download Latest REC Repair"
+repair_download = "Download Latest REC Repair Package"
 updating = "Updating"
 updated = "Updated"
 package = "Package {size}"
@@ -691,7 +691,7 @@ partly_one = "Slot {slot}'s recovery partition was only partly written, so reboo
 partly_two = "The recovery partitions of slots {a} and {b} were only partly written, so rebooting to recovery may not start Skyward. Update again, and reboot once it's done."
 download_and_update = "Download and update"
 from_github = "The new version is downloaded from GitHub and goes into the recovery partitions once its SHA-256 checks out. The system and user data are left as they are."
-both_slots = "The new version goes into the recovery partition of the slot that starts next, and into the other slot's where it holds Skyward."
+both_slots = "The new version goes into the recovery partition of the slot that will boot next, and into the other slot's recovery partition if it contains Skyward."
 reboot_to_use = "Once updated, reboot to recovery to use the new version."
 
 [settings]
