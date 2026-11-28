@@ -210,7 +210,7 @@ fn hits(rects: &[Rect], actions: &[Action]) -> Vec<Hit> {
 }
 
 /// The compact five-part status card immediately below the device card.
-fn home_status_card(c: &mut Canvas, t: &Theme, f: &Fonts, top: f32, i: &DeviceInfo, data: &Data, lang: Lang) -> f32 {
+fn home_status_card(c: &mut Canvas, t: &Theme, f: &Fonts, top: f32, i: &DeviceInfo, data: &Data, lang: Lang, page: usize) -> f32 {
     let m = &t.m;
     let x = m.margin;
     let w = m.w as f32 - m.margin * 2.0;
@@ -239,15 +239,24 @@ fn home_status_card(c: &mut Canvas, t: &Theme, f: &Fonts, top: f32, i: &DeviceIn
         ["Active slot", "Data partition", "Free space", "Battery", "Power"]
     };
     let values = [slot, data_value, free, battery, power];
+    // Show three readings at a time inside the card's clipped viewport.
+    // The middle reading overlaps between pages, making the swipe feel continuous.
+    let mut viewport = Canvas::new(w.ceil() as u32, h.ceil() as u32);
     let value_px = m.dp(14.0);
     let label_px = m.dp(11.0);
-    for index in 0..5 {
-        let left = x + w * index as f32 / 5.0;
-        let cell_w = w / 5.0;
-        let cx = left + cell_w / 2.0;
-        c.text_vc(&f.heading, &values[index], cx, top + h * 0.37, value_px, t.pal.text, Some(cell_w - m.dp(5.0)));
-        c.text_vc(&f.body, labels[index], cx, top + h * 0.73, label_px, t.pal.subtitle, Some(cell_w - m.dp(5.0)));
+    let first = if page == 0 { 0 } else { 2 };
+    let cell_w = w / 3.0;
+    for column in 0..3 {
+        let index = first + column;
+        let cx = cell_w * (column as f32 + 0.5);
+        viewport.text_vc(&f.heading, &values[index], cx, h * 0.37, value_px, t.pal.text, Some(cell_w - m.dp(8.0)));
+        viewport.text_vc(&f.body, labels[index], cx, h * 0.73, label_px, t.pal.subtitle, Some(cell_w - m.dp(8.0)));
     }
+    // A small two-dot cue shows that the card has another page.
+    let dot_y = h - m.dp(5.0);
+    viewport.fill_circle(w / 2.0 - m.dp(5.0), dot_y, m.dp(1.8), if page == 0 { t.pal.accent } else { t.pal.subtitle });
+    viewport.fill_circle(w / 2.0 + m.dp(5.0), dot_y, m.dp(1.8), if page == 1 { t.pal.accent } else { t.pal.subtitle });
+    c.lay(&viewport, x.floor() as i32, top.floor() as i32, 1.0);
     top + h
 }
 
@@ -304,7 +313,7 @@ pub fn home(cx: &Ctx) -> Frame {
     out.push(Hit { rect: card.rows[0], action: Action::Open(Screen::About) });
     out.extend(card.rows[1..].iter().zip(&opens).filter_map(|(&rect, open)| open.map(|action| Hit { rect, action })));
     y = card.bottom + t.m.card_gap;
-    let status_bottom = home_status_card(&mut c, t, f, y, i, &cx.state.data, l);
+    let status_bottom = home_status_card(&mut c, t, f, y, i, &cx.state.data, l, cx.state.home_status_page);
     y = status_bottom + t.m.card_gap;
     // On a phone whose WLAN the recovery brings up, the WLAN comes first
     // under the device, as on the stock settings home; with it, where the
@@ -362,7 +371,9 @@ pub fn home(cx: &Ctx) -> Frame {
     // However little it holds, the page scrolls far enough to fold its bar
     // away.
     let height = fitted(t, system.bottom).max(t.m.h + fold.span.ceil() as u32);
-    Frame { back: false, fold: Some(fold), ..Frame::new(t, c.crop_height(height), out, HOME_TITLE, cards_top) }
+    let mut frame = Frame { back: false, fold: Some(fold), ..Frame::new(t, c.crop_height(height), out, HOME_TITLE, cards_top) };
+    frame.horizontal_scroll = Some(Rect::new(t.m.margin, status_bottom - t.m.dp(76.0), t.m.w as f32 - t.m.margin * 2.0, t.m.dp(76.0)));
+    frame
 }
 
 /// Find and copy pictures, videos, documents and WeChat data out of /data.
