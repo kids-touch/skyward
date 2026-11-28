@@ -78,7 +78,14 @@ const FORMS: [(&str, PluralCategory); 6] = [
 fn main() {
     // The build's own facts, for the About page: when it was made, and by
     // whom.
-    let by = "KIDS";
+    let by = env::var("GITHUB_ACTOR")
+        .or_else(|_| env::var("USER"))
+        .or_else(|_| env::var("LOGNAME"))
+        .unwrap_or_else(|_| "unknown".to_string());
+
+    println!("cargo:rerun-if-env-changed=GITHUB_ACTOR");
+    println!("cargo:rerun-if-env-changed=USER");
+    println!("cargo:rerun-if-env-changed=LOGNAME");
     let time = std::process::Command::new("date")
         .arg("+%Y-%m-%d %H:%M")
         .output()
