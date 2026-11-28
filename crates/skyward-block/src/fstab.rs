@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 /// The device-specific table carried by the recovery ramdisk. When present,
 /// it is authoritative: it lets recovery mount partitions even when vendor
 /// and odm cannot be mounted yet.
-pub const RECOVERY_FILE: &str = "/etc/recovery/fstab.qcom";
+pub const RECOVERY_FILE: &str = "/skyward/fstab.qcom";
 
 /// Where the installed system keeps its own table when the recovery carries
 /// no device-specific copy.
