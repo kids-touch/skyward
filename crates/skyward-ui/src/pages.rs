@@ -3350,7 +3350,10 @@ pub fn wlan(cx: &Ctx) -> Frame {
             // the network is shown only in the joined row (also while joining).
             let selected_ssid = w.joined.as_ref().map(|joined| joined.ssid.as_slice());
             let saved: Vec<_> = s.saved_wlan.iter().enumerate()
-                .filter(|(_, saved)| selected_ssid != Some(saved.ssid.as_slice()))
+                .filter(|(_, saved)| {
+        selected_ssid != Some(saved.ssid.as_slice())
+            && w.networks.iter().any(|n| n.ssid.as_slice() == saved.ssid.as_slice())
+    })
                 .collect();
             let saved_ssids: Vec<&[u8]> = s.saved_wlan.iter()
                 .map(|saved| saved.ssid.as_slice())
