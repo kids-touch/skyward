@@ -1162,10 +1162,33 @@ fn run_binary(ctx: &Context) -> Result<(i32, bool)> {
 /// away.
 fn clean_up(before: &[(i32, PathBuf)], mapped: &SlotMaps) -> Result<()> {
     let kept: HashSet<i32> = before.iter().map(|(id, _)| *id).collect();
+    // Keep the mount points that were present before the installer script.
+    // Some ROM scripts unmount /vendor or /odm themselves; merely removing
+    // mounts created by the script does not bring those original mounts back.
+    let mut original: Vec<PathBuf> = before.iter().map(|(_, point)| point.clone()).collect();
+    original.sort_by_key(|point| point.components().count());
+    original.dedup();
+
     for (_, point) in skyward_block::mount::mount_ids()?.into_iter().rev().filter(|(id, _)| !kept.contains(id)) {
         skyward_block::mount::umount_detach(&point)?;
     }
     skyward_vab::unmap_slot(mapped)?;
+
+    // Restore only fstab-backed system mount points. /data is deliberately
+    // left to the recovery's crypto/data flow: mounting its raw userdata
+    // block device here could bypass the decrypted dm device.
+    for point in original {
+        if point == Path::new("/data") || point == Path::new("/metadata") {
+            continue;
+        }
+        if !skyward_block::mount::is_mount_point(&point)? {
+            if let Some(name) = point.to_str() {
+                skyward_block::fstab::mount_at(name)
+                    .with_context(|| format!("restore the original mount at {}", point.display()))?;
+                let _ = kmsg(&format!("install: restored the original mount at {}", point.display()));
+            }
+        }
+    }
     remount_metadata()
 }
 
