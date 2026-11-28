@@ -256,4 +256,4 @@ jobs:
             echo "::error::No recovery ZIP files were found"
             exit 1
           fi
-          gh release create "$release_tag" --title "$release_title" --generate-notes --prerelease "${zips[@]}" images/SHA256SUMS
+          gh release create "$release_tag" --title "$release_title" --generate-notes "${zips[@]}" images/SHA256SUMS
