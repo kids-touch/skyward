@@ -3345,15 +3345,15 @@ pub fn wlan(cx: &Ctx) -> Frame {
                     y = widgets::footnote(&mut c, t, f, y, &note);
                 }
             }
-            // Show saved credentials only while their networks are present in
-            // the latest scan. As soon as one is selected, it moves to the
-            // joined row (including while the connection is still in progress).
+            // Saved networks belong only in the saved section, whether or not
+            // they are currently visible in the latest scan. Once selected,
+            // the network is shown only in the joined row (also while joining).
             let selected_ssid = w.joined.as_ref().map(|joined| joined.ssid.as_slice());
             let saved: Vec<_> = s.saved_wlan.iter().enumerate()
-                .filter(|(_, saved)| {
-                    selected_ssid != Some(saved.ssid.as_slice())
-                        && w.networks.iter().any(|found| found.ssid == saved.ssid)
-                })
+                .filter(|(_, saved)| selected_ssid != Some(saved.ssid.as_slice()))
+                .collect();
+            let saved_ssids: Vec<&[u8]> = s.saved_wlan.iter()
+                .map(|saved| saved.ssid.as_slice())
                 .collect();
             if !saved.is_empty() {
                 let saved_title = if l == Lang::Hans { "已保存的 WLAN" } else { "Saved WLANs" };
@@ -3366,8 +3366,12 @@ pub fn wlan(cx: &Ctx) -> Frame {
                 out.extend(hits(&list.rows, &picks));
                 y = list.bottom + t.m.card_gap;
             }
-            let others: Vec<(usize, &Network)> =
-                w.networks.iter().enumerate().filter(|(_, n)| w.joined.as_ref().is_none_or(|j| j.ssid != n.ssid)).collect();
+            let others: Vec<(usize, &Network)> = w.networks.iter().enumerate()
+                .filter(|(_, n)| {
+                    w.joined.as_ref().is_none_or(|j| j.ssid != n.ssid)
+                        && !saved_ssids.iter().any(|ssid| *ssid == n.ssid.as_slice())
+                })
+                .collect();
             let (below, rescan) = widgets::section_action(&mut c, t, f, y, l.pick(texts::wlan::NEARBY), l.pick(texts::wlan::REFRESH));
             out.push(Hit { rect: rescan, action: Action::Rescan });
             y = below;
