@@ -1,10 +1,8 @@
 //! The built-in lightweight browser's navigation and UI contract.
 
-use super::*;
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::super::*;
     use crate::app::testing::*;
 
     #[test]
@@ -31,6 +29,7 @@ mod tests {
         assert_eq!(tap(&mut app, &fonts, &info, Action::BrowserLink(0)), vec![Effect::Browse("https://example.com/next".into())]);
         assert_eq!(app.state.browser_url, "https://example.com/next");
     }
+
     #[test]
     fn browser_back_and_forward_follow_navigation_history() {
         let (fonts, info) = (fonts(), info());
@@ -43,5 +42,4 @@ mod tests {
         assert_eq!(tap(&mut app, &fonts, &info, Action::BrowserBack), vec![Effect::Browse("https://example.com/one".into())]);
         assert_eq!(tap(&mut app, &fonts, &info, Action::BrowserForward), vec![Effect::Browse("https://example.com/two".into())]);
     }
-
 }
