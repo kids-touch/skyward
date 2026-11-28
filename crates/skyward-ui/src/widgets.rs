@@ -820,7 +820,7 @@ pub fn big_title(t: &Theme, f: &Fonts, title: &str) -> Sprite {
     let w = Canvas::new(0, 0).text_width(&f.title, title, px);
     let top = if px == m.title_px { m.title_top } else { m.title_top - f.title.ink(m.title_px).0 + f.title.ink(px).0 };
     let (x, y) = (m.title_x - pad, m.title_top - pad);
-    let size = ((w + pad * 2.0).ceil() as u32, (m.title_px * 1.4 + pad * 2.0).ceil() as u32);
+    let size = ((w + pad * 2.0).ceil() as u32, (m.title_px * 1.7 + pad * 2.0).ceil() as u32);
     Sprite::capture(x, y, size.0, size.1, |c, dx, dy| {
         c.text_top(&f.title, title, m.title_x + dx, top + dy, px, Rgba::rgb(0, 0, 0), None);
     })
