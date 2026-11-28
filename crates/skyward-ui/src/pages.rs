@@ -3323,14 +3323,22 @@ pub fn wlan(cx: &Ctx) -> Frame {
             }
             // Saved credentials are listed separately from nearby scan results.
             // Tapping one joins it with its stored password, without asking again.
-            if !s.saved_wlan.is_empty() {
-                let saved_title = if l == Lang::Hans { "已保存的 WiFi" } else { "Saved Wi-Fi" };
+            // Once a saved network is connected, keep its credentials but hide
+            // that network from this list; it is already shown in the joined row.
+            let connected_ssid = w.joined.as_ref()
+                .filter(|joined| matches!(&joined.stage, Joining::Connected(_)))
+                .map(|joined| joined.ssid.as_slice());
+            let saved: Vec<_> = s.saved_wlan.iter().enumerate()
+                .filter(|(_, saved)| connected_ssid != Some(saved.ssid.as_slice()))
+                .collect();
+            if !saved.is_empty() {
+                let saved_title = if l == Lang::Hans { "已保存的 WLAN" } else { "Saved WLANs" };
                 y = widgets::section(&mut c, t, f, y, saved_title);
-                let rows: Vec<Row> = s.saved_wlan.iter()
-                    .map(|saved| Row::new(&saved.name).trail(Trail::Network { locked: saved.security.password() }))
+                let rows: Vec<Row> = saved.iter()
+                    .map(|(_, saved)| Row::new(&saved.name).trail(Trail::Network { locked: saved.security.password() }))
                     .collect();
                 let list = widgets::list(&mut c, t, f, y, &rows);
-                let picks: Vec<Action> = (0..s.saved_wlan.len()).map(Action::JoinSavedNetwork).collect();
+                let picks: Vec<Action> = saved.iter().map(|(index, _)| Action::JoinSavedNetwork(*index)).collect();
                 out.extend(hits(&list.rows, &picks));
                 y = list.bottom + t.m.card_gap;
             }
