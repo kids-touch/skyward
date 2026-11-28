@@ -188,7 +188,7 @@ mod tests {
         assert_eq!(build.sources(None), [build.link.clone()]);
         assert_eq!(build.sources(Some("https://release-assets.githubusercontent.com/a?sig=1".into())), [
             "https://release-assets.githubusercontent.com/a?sig=1",
-            build.link.clone()
+            build.link.as_str()
         ]);
     }
 }
