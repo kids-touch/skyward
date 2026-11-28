@@ -7,7 +7,7 @@
 use anyhow::{Context, Result};
 use skyward_install::upgrade;
 use skyward_net::download::{self, Damaged, Failure, NoRoom, Progress, Refused, Sum};
-use skyward_net::github::{self, Build, Newest};
+use skyward_net::github::{self, Build, DownloadSource, Newest};
 use skyward_net::http::{self, Servers};
 use skyward_net::reach::{self, Reach};
 use skyward_net::release::{self, Installed, Release, Unanswered};
@@ -46,7 +46,7 @@ pub enum Task {
     /// phone `codename` names, and write the image into the recovery
     /// partitions of the slot that starts next and of any other slot that
     /// holds Skyward.
-    UpdateSkyward { build: Build, codename: String, path: PathBuf },
+    UpdateSkyward { build: Build, source: DownloadSource, codename: String, path: PathBuf },
 }
 
 pub enum Event {
@@ -141,25 +141,31 @@ impl Worker {
                     let answer = github::ask(&a, &codename, skyward_info::VERSION).map_err(|e| unanswered(&e, github::LATEST, &probe, &servers));
                     tell(Event::SkywardChecked(answer));
                 }
-                // GitHub's API hands the zip out at a short-lived address
-                // of the file itself. Downloads try the configured public
-                // mirrors first, then fall back to GitHub's original link.
-                Task::UpdateSkyward { build, codename, path } => {
+                // Download the release asset only from the source chosen on
+                // Skyward's update page; never switch sources automatically.
+                Task::UpdateSkyward { build, source, codename, path } => {
                     let a = http::agent(servers.clone());
                     *using.lock().expect("the agent is not held by a thread that panicked") = Some(a.clone());
-                    let located = github::locate(&a, &build.url, skyward_info::VERSION)
-                        .inspect_err(|e| {
-                            let _ = skyward_sys::kmsg(&format!("asking GitHub where {} is: {e:#}", build.name));
-                        })
-                        .ok();
+                    // Only the official GitHub source uses the short-lived
+                    // signed asset URL. A mirror choice must never fall back
+                    // to GitHub behind the user's back.
+                    let located = if source == DownloadSource::Github {
+                        github::locate(&a, &build.url, skyward_info::VERSION)
+                            .inspect_err(|e| {
+                                let _ = skyward_sys::kmsg(&format!("asking GitHub where {} is: {e:#}", build.name));
+                            })
+                            .ok()
+                    } else {
+                        None
+                    };
                     let mut located_again = false;
                     let mut refused = |a: &ureq::Agent| {
-                        if located_again {
+                        if source != DownloadSource::Github || located_again {
                             return Again::Retry;
                         }
                         located_again = true;
                         match github::locate(a, &build.url, skyward_info::VERSION) {
-                            Ok(fresh) => Again::From(build.sources(Some(fresh))),
+                            Ok(fresh) => Again::From(vec![build.source_url(source, Some(fresh))]),
                             Err(e) => {
                                 let _ = skyward_sys::kmsg(&format!("asking GitHub again where {} is: {e:#}", build.name));
                                 Again::Retry
@@ -167,7 +173,8 @@ impl Worker {
                         }
                     };
                     let sum = Sum::Sha256(build.sha256.clone());
-                    let end = match fetch(&servers, build.sources(located), &sum, &build.name, &path, &stopping, &using, &tell, &mut refused) {
+                    let url = build.source_url(source, located);
+                    let end = match fetch(&servers, vec![url], &sum, &build.name, &path, &stopping, &using, &tell, &mut refused) {
                         // Stopping asked for as the last of it came is
                         // stopping still: nothing is written.
                         End::Downloaded if stopping.load(Ordering::Relaxed) => End::Stopped,

@@ -3499,12 +3499,12 @@ impl Pages<'_> {
             // The zip goes into the recovery's own folder, which is
             // in memory, before its image goes into the recovery
             // partitions.
-            Effect::UpdateSkyward(build) => {
+            Effect::UpdateSkyward { build, source } => {
                 ensure!(self.skyward_updater.is_none(), "Skyward is being updated already");
                 ensure!(self.installer.is_none(), "an installer is running already");
-                skyward_sys::kmsg(&format!("updating Skyward to {}", build.name))?;
+                skyward_sys::kmsg(&format!("updating Skyward to {} from {}", build.name, source.name()))?;
                 let path = Path::new(skyward_sys::RUN).join(&build.name);
-                let task = updates::Task::UpdateSkyward { build, codename: cfg.device.codename.clone(), path };
+                let task = updates::Task::UpdateSkyward { build, source, codename: cfg.device.codename.clone(), path };
                 self.skyward_updater = Some(updates::Worker::start(task, self.servers.clone())?);
             }
             Effect::StopSkywardUpdate => self.skyward_updater.as_ref().context("Skyward is not being updated")?.stop(),
