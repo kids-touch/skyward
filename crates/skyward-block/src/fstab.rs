@@ -44,8 +44,16 @@ pub fn entries(text: &str) -> Vec<Entry> {
         if line.starts_with('#') {
             continue;
         }
+        // Android fstab rows can contain trailing whitespace-separated
+        // material. Keep the first four columns and fold the remainder into
+        // the fs_mgr flags instead of silently dropping the entire row.
         let fields: Vec<&str> = line.split_whitespace().collect();
-        let [device, mount_point, filesystem, options, extras] = fields[..] else { continue };
+        if fields.len() < 5 {
+            continue;
+        }
+        let (device, mount_point, filesystem, options) =
+            (fields[0], fields[1], fields[2], fields[3]);
+        let extras = fields[4..].join(" ");
         out.push(Entry {
             device: device.to_string(),
             mount_point: mount_point.to_string(),
@@ -59,23 +67,28 @@ pub fn entries(text: &str) -> Vec<Entry> {
 
 /// Every entry of the phone's own table, read from wherever the table is.
 fn table() -> Result<Vec<Entry>> {
-    // Prefer the copy packed into this recovery. Do not merge it with the
-    // installed system's copies: duplicate entries can describe different
-    // device states, and the ramdisk copy is the one intended for recovery.
-    match std::fs::read_to_string(RECOVERY_FILE) {
-        Ok(text) => return Ok(entries(&text)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+    // Prefer the copy packed into this recovery. If it is present but lacks
+    // /data, keep it and consult the installed tables for the missing entry:
+    // some device builds ship a partial recovery fstab. This fallback is
+    // deliberately limited to missing mount points so recovery-specific
+    // entries remain authoritative and are not duplicated by vendor/odm.
+    let mut out = match std::fs::read_to_string(RECOVERY_FILE) {
+        Ok(text) => entries(&text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(e) => return Err(e).with_context(|| format!("read {RECOVERY_FILE}")),
-    }
+    };
 
-    let mut out = Vec::new();
     for file in FILES {
         let text = match std::fs::read_to_string(file) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => return Err(e).with_context(|| format!("read {file}")),
         };
-        out.extend(entries(&text));
+        for entry in entries(&text) {
+            if !out.iter().any(|existing| existing.mount_point == entry.mount_point) {
+                out.push(entry);
+            }
+        }
     }
     Ok(out)
 }
@@ -208,5 +221,13 @@ mod tests {
     fn comments_and_short_lines_are_passed_over() {
         assert!(entries("# nothing\n\n/dev/x /y f2fs rw\n").is_empty());
         assert_eq!(entries(TABLE).len(), 3);
+    }
+
+    #[test]
+    fn extra_whitespace_does_not_hide_the_data_partition() {
+        let parsed = entries("/dev/block/by-name/userdata   /data   f2fs   noatime,discard   wait,check,formattable extra\n");
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].mount_point, "/data");
+        assert_eq!(parsed[0].extras, ["wait", "check", "formattable extra"]);
     }
 }
