@@ -142,9 +142,8 @@ impl Worker {
                     tell(Event::SkywardChecked(answer));
                 }
                 // GitHub's API hands the zip out at a short-lived address
-                // of the file itself, which it gives again once one has
-                // run out and is turned down; the release's link on
-                // github.com is tried after it.
+                // of the file itself. Downloads try the configured public
+                // mirrors first, then fall back to GitHub's original link.
                 Task::UpdateSkyward { build, codename, path } => {
                     let a = http::agent(servers.clone());
                     *using.lock().expect("the agent is not held by a thread that panicked") = Some(a.clone());
@@ -250,6 +249,7 @@ fn fetch(
 ) -> End {
     let mut url = 0;
     let mut failed = 0;
+    let mut damaged = false;
     let mut samples: Vec<(Instant, u64)> = Vec::new();
     let mut told = Instant::now() - PROGRESS_EVERY;
     loop {
@@ -297,7 +297,9 @@ fn fetch(
             return End::Failed(Failure::NoRoom { needed: room.needed, free: room.free });
         }
         if e.is::<Damaged>() {
-            return End::Failed(Failure::Damaged);
+            // A mirror may serve an incomplete or altered file. Reject it,
+            // then give the next source a chance; the digest is still required.
+            damaged = true;
         }
         let _ = skyward_sys::kmsg(&format!("downloading {name} from {}: {e:#}", host(&urls[url])));
         if e.is::<Refused>() {
@@ -313,7 +315,7 @@ fn fetch(
         }
         failed = if gained { 1 } else { failed + 1 };
         if failed >= TRIES {
-            return End::Failed(Failure::Other(format!("{e:#}")));
+            return if damaged { End::Failed(Failure::Damaged) } else { End::Failed(Failure::Other(format!("{e:#}"))) };
         }
         url = (url + 1) % urls.len();
         let until = Instant::now() + BETWEEN;
