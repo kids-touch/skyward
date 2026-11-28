@@ -658,6 +658,22 @@ impl App {
                     }
                 }
             }
+            Action::JoinSavedNetwork(i) => {
+                let Some(saved) = self.state.saved_wlan.get(i).cloned() else { return Vec::new() };
+                if self.state.wlan.as_ref().and_then(|w| w.joined.as_ref()).is_some_and(|j| j.ssid == saved.ssid) {
+                    return self.act(Action::OpenJoined, now);
+                }
+                if !saved.security.joinable() {
+                    self.say(l.pick(texts::toast::WEP_UNSUPPORTED), now);
+                    return Vec::new();
+                }
+                return vec![Effect::JoinWlan {
+                    ssid: saved.ssid,
+                    name: saved.name,
+                    security: saved.security,
+                    password: saved.password,
+                }];
+            }
             Action::NetworkDetails(i) => {
                 let w = self.state.wlan.as_ref().expect("networks show on a phone whose WLAN is brought up");
                 let Some(network) = w.networks.get(i).cloned() else { return Vec::new() };

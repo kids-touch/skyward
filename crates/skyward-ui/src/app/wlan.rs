@@ -166,6 +166,26 @@ mod tests {
     }
 
     #[test]
+    fn tapping_a_saved_wifi_joins_with_its_saved_password_without_prompting() {
+        let mut app = App::new(Screen::Wlan, W, H, PPD);
+        app.state.wlan = Some(Wlan { power: Power::On, networks: Vec::new(), joined: None });
+        app.state.saved_wlan.push(SavedWlan {
+            ssid: b"Home-WiFi".to_vec(),
+            name: "Home-WiFi".into(),
+            security: Security::Psk,
+            password: Secret("saved-pass-123".into()),
+        });
+        let effects = app.act(Action::JoinSavedNetwork(0), 0);
+        assert_eq!(effects, vec![Effect::JoinWlan {
+            ssid: b"Home-WiFi".to_vec(),
+            name: "Home-WiFi".into(),
+            security: Security::Psk,
+            password: Secret("saved-pass-123".into()),
+        }]);
+        assert_eq!(app.screen(), Screen::Wlan, "no password page is opened");
+    }
+
+    #[test]
     fn a_refused_password_is_asked_for_again_from_the_networks_row() {
         let (f, i) = (fonts(), info());
         let mut app = App::new(Screen::Home, W, H, PPD);

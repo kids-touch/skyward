@@ -443,6 +443,8 @@ pub enum Action {
     /// Join the network at this place in the list of those in range, or
     /// open the page of the one joined.
     JoinNetwork(usize),
+    /// Join a network using its already saved password.
+    JoinSavedNetwork(usize),
     /// Open the details of the network at this place in the list of those
     /// in range.
     NetworkDetails(usize),
