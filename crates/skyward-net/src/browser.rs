@@ -195,12 +195,11 @@ pub fn parse_html(html: &str, base: &str) -> BrowserPage {
                 "img" if hidden_depth == 0 => {
                     let source = attribute(body, "src").or_else(|| attribute(body, "data-src"))
                         .or_else(|| first_srcset(attribute(body, "srcset").as_deref()));
-                    if images.len() < MAX_IMAGES {
-                        if let Some(src) = source.and_then(|v| resolve_url(base, &v)) {
-                            if !images.iter().any(|image: &BrowserImage| image.url == src) {
-                                images.push(BrowserImage { alt: attribute(body, "alt").unwrap_or_default(), url: src, mime: String::new(), bytes: Vec::new() });
-                            }
-                        }
+                    if images.len() < MAX_IMAGES
+                        && let Some(src) = source.and_then(|v| resolve_url(base, &v))
+                        && !images.iter().any(|image: &BrowserImage| image.url == src)
+                    {
+                        images.push(BrowserImage { alt: attribute(body, "alt").unwrap_or_default(), url: src, mime: String::new(), bytes: Vec::new() });
                     }
                 }
                 _ => {}
