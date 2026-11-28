@@ -176,12 +176,8 @@ jobs:
           retention-days: 7
 
   release:
-    name: Publish the release
-    if: |
-      always() &&
-      needs.check.result == 'success' &&
-      needs.recovery.result == 'success' &&
-      (github.ref == 'refs/heads/shennong' || (github.ref_type == 'tag' && needs.tag.result == 'success'))
+    name: Publish the formal release
+    if: github.ref_type == 'tag'
     needs: [tag, check, recovery]
     runs-on: ubuntu-24.04
     permissions:
@@ -202,23 +198,61 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            version="$GITHUB_REF_NAME"
-            release_tag="$GITHUB_REF_NAME"
-            release_title="$GITHUB_REF_NAME"
-            prerelease_args=()
-          else
-            version="${GITHUB_SHA::7}"
-            release_tag="test-$version"
-            release_title="Skyward Recovery Test $version"
-            prerelease_args=(--prerelease)
+          zips=()
+          for config in devices/*.toml; do
+            device=$(basename "$config" .toml)
+            model=$(python3 -c 'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb"))["device"]["model"])' "$config")
+            matches=(images/skyward-"$GITHUB_REF_NAME"-"$device"-*.zip)
+            for zip in "${matches[@]}"; do
+              [ -f "$zip" ] || continue
+              zips+=("$zip#$model ($device)")
+            done
+          done
+          if [ "${#zips[@]}" -eq 0 ]; then
+            echo "::error::No recovery ZIP files were found"
+            exit 1
           fi
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes "${zips[@]}" images/SHA256SUMS
+
+  test_release:
+    name: Publish the shennong test release
+    if: github.ref == 'refs/heads/shennong'
+    needs: [check, recovery]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: skyward-*
+          path: images
+          merge-multiple: true
+          skip-decompress: true
+      - name: Sum the zips
+        working-directory: images
+        run: sha256sum -- *.zip > SHA256SUMS
+      - name: Publish the prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version="${GITHUB_SHA::7}"
+          release_tag="test-$version"
+          release_title="Skyward Recovery Test $version"
 
           zips=()
           for config in devices/*.toml; do
             device=$(basename "$config" .toml)
             model=$(python3 -c 'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb"))["device"]["model"])' "$config")
-            zip=$(ls images/skyward-"$version"-"$device"-*.zip)
-            zips+=("$zip#$model ($device)")
+            matches=(images/skyward-"$version"-"$device"-*.zip)
+            for zip in "${matches[@]}"; do
+              [ -f "$zip" ] || continue
+              zips+=("$zip#$model ($device)")
+            done
           done
-          gh release create "$release_tag" --title "$release_title" --generate-notes "${prerelease_args[@]}" "${zips[@]}" images/SHA256SUMS
+          if [ "${#zips[@]}" -eq 0 ]; then
+            echo "::error::No recovery ZIP files were found"
+            exit 1
+          fi
+          gh release create "$release_tag" --title "$release_title" --generate-notes --prerelease "${zips[@]}" images/SHA256SUMS
