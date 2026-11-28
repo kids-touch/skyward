@@ -2308,9 +2308,10 @@ impl Pages<'_> {
     /// An install finished and the Root setting asks for the new slot to
     /// be patched: write the root already on the phone into that slot.
     fn start_auto_root(&mut self, slot: skyward_vab::Slot, now: u64) -> Result<bool> {
-        if self.app.state.data != Data::Open {
-            return self.auto_root_skipped("the data partition is not open", now);
-        }
+        // Do not use the UI's cached Data state as a gate here. It can lag
+        // behind the actual mount state after an installer has finished.
+        // The root worker checks the real shared-storage path before it
+        // writes anything and reports a concrete error if data is unavailable.
         if self.installer.is_some() {
             return self.auto_root_skipped("an installer is still running", now);
         }
