@@ -3158,7 +3158,24 @@ pub fn skyward_update(cx: &Ctx) -> Frame {
     let mut out = Vec::new();
     let y = widgets::section_first(&mut c, t, f, top, l.pick(texts::common::THIS_PHONE));
     let y = widgets::info_card(&mut c, t, f, y, &[(l.pick(texts::update::CURRENT_VERSION), VERSION.to_string())]);
-    let y = widgets::section(&mut c, t, f, y, l.pick(texts::update::ONLINE));
+
+    // The source is chosen explicitly and kept in settings for the next start.
+    let y = widgets::section(&mut c, t, f, y, l.pick(texts::local::DOWNLOAD_SOURCE));
+    let source_rows = [
+        Row::new("GitHub").trail(if cx.state.skyward_source == DownloadSource::Github { Trail::Choice("✓") } else { Trail::None }),
+        Row::new("ghfast.top").trail(if cx.state.skyward_source == DownloadSource::GhFast { Trail::Choice("✓") } else { Trail::None }),
+        Row::new("ghproxy.net").trail(if cx.state.skyward_source == DownloadSource::GhProxy { Trail::Choice("✓") } else { Trail::None }),
+    ];
+    let sources = widgets::list(&mut c, t, f, y, &source_rows);
+    if !cx.state.updating_skyward() {
+        out.extend(hits(&sources.rows, &[
+            Action::SkywardDownloadSource(DownloadSource::Github),
+            Action::SkywardDownloadSource(DownloadSource::GhFast),
+            Action::SkywardDownloadSource(DownloadSource::GhProxy),
+        ]));
+    }
+
+    let y = widgets::section(&mut c, t, f, sources.bottom, l.pick(texts::update::ONLINE));
     let y = skyward_online(&mut c, cx, y, &mut out);
     let points = [l.pick(texts::skyward_update::FROM_GITHUB), l.pick(texts::skyward_update::BOTH_SLOTS), l.pick(texts::skyward_update::REBOOT_TO_USE)];
     let y = widgets::notes(&mut c, t, f, y + t.m.card_gap, l.pick(texts::common::NOTES), &points);
