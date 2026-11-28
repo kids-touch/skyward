@@ -1209,7 +1209,7 @@ pub fn about(cx: &Ctx) -> Frame {
     // how tall it comes to, then drawn that tall.
     let (_, _, bottom) = about_cards(cx, &mut Canvas::band(m.w, m.h * 3, 0..0, 0..0, Rgba { r: 0, g: 0, b: 0, a: 0 }));
     let mut c = Canvas::new(m.w, fitted(t, bottom));
-    let (out, summary_top, bottom) = about_cards(cx, &mut c);
+    let (mut out, summary_top, bottom) = about_cards(cx, &mut c);
     let canvas = fit(c, t, bottom);
     let art = HeroArt {
         wordmark: widgets::wordmark(t, f, "Skyward", m.dp(233.7), m.dp(37.8)),
